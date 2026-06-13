@@ -1,49 +1,111 @@
-"""GraphState — LangGraph 节点间的数据契约
+"""GraphState — LangGraph 节点间共享状态。"""
 
-每个节点读取 state 中的字段，处理后返回部分更新（PartialState）。
-LangGraph 自动合并 reducer。
-"""
+from __future__ import annotations
 
-from typing import TypedDict, Optional, Annotated
-from langgraph.graph.message import add_messages
-from ..models.intent import RouteIntent
-from ..models.poi import ScoredPoi
-from ..models.route import RoutePlan, RoutePlanResult, RouteFeedback
-from ..models.template import RouteTemplate
+import operator
+from datetime import datetime, timezone
+from typing import Annotated, Any, Optional, TypedDict
+from uuid import uuid4
+
+
+def merge_assumptions(existing: list[dict], new: list[dict]) -> list[dict]:
+    by_slot = {item["slot"]: item for item in existing}
+    for item in new:
+        by_slot[item["slot"]] = item
+    return list(by_slot.values())
 
 
 class GraphState(TypedDict, total=False):
-    """LangGraph 全局状态。字段按节点顺序排列。"""
+    # L0 RUN_META
+    run_id: str
+    session_id: Optional[str]
+    turn_id: str
+    run_mode: str
+    run_status: str
+    plan_path: Optional[str]
+    current_phase: str
+    error: Optional[str]
+    degraded: bool
 
-    # ===== 输入 =====
-    user_query: str                          # ① 用户原始 NL 输入
-    user_id: Optional[str]                   # 用户标识
-    user_lat: Optional[float]                # 用户当前纬度
-    user_lng: Optional[float]                # 用户当前经度
+    # L1 INPUT
+    user_query: str
+    user_id: Optional[str]
+    user_lat: Optional[float]
+    user_lng: Optional[float]
+    input_ts: str
 
-    # ===== intent_parse 输出 =====
-    route_intent: Optional[RouteIntent]      # ② LLM 解析后的结构化意图
+    # L2 REASONING
+    constraints: Optional[dict]
+    assumptions: Annotated[list[dict], merge_assumptions]
+    constraint_embedding: Optional[list[float]]
+    relaxed_constraints: Annotated[list[str], operator.add]
 
-    # ===== search_cache 输出 =====
-    query_embedding: Optional[list[float]]   # ③ 查询向量 (512-dim)
-    candidate_templates: list[RouteTemplate] # ③ 检索到的 top-K 模板
+    # L3 WORKING (HOT 字段预留，Step B 使用)
+    bundle_candidates: list
+    bundle_match_score: float
+    matched_bundle_id: Optional[str]
+    candidate_pois: list
+    candidate_routes: list
+    valid_routes: list
+    scored_routes: list
+    validation_reports: list
 
-    # ===== match_score 输出 =====
-    best_template: Optional[RouteTemplate]   # ④ 最佳匹配模板
-    match_score: float                       # ④ 匹配分数 [0.0, 1.0]
-    branch: str                              # ④ "adapt" | "generate"
+    # L4 OUTPUT
+    route_results: list
+    presentation: Optional[dict]
 
-    # ===== full_generate 中间产物 =====
-    candidate_pois: list[ScoredPoi]          # POI 候选 (Top-30)
+    # L5 TELEMETRY
+    phase_log: Annotated[list[dict], operator.add]
+    stream_events: Annotated[list[dict], operator.add]
 
-    # ===== 最终输出 =====
-    route_result: Optional[RoutePlanResult]  # ⑤ 生成的路线
 
-    # ===== 日志 / 流式推送 =====
-    messages: Annotated[list, add_messages]  # SSE 流式消息累积
-    current_phase: str                       # 当前阶段 (SSE 推送用)
-    error: Optional[str]                     # 错误信息
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-    # ===== 反馈循环 =====
-    feedback: Optional[RouteFeedback]        # ⑥ 用户反馈
-    feedback_processed: bool                 # 反馈是否已处理
+
+def build_initial_state(
+    user_query: str,
+    *,
+    user_id: str | None = None,
+    user_lat: float | None = None,
+    user_lng: float | None = None,
+    session_id: str | None = None,
+) -> GraphState:
+    """创建 Plan Run 初始状态，所有键必须有默认值。"""
+    return GraphState(
+        run_id=str(uuid4()),
+        session_id=session_id,
+        turn_id=str(uuid4()),
+        run_mode="plan",
+        run_status="running",
+        plan_path=None,
+        current_phase="init",
+        error=None,
+        degraded=False,
+        user_query=user_query,
+        user_id=user_id,
+        user_lat=user_lat,
+        user_lng=user_lng,
+        input_ts=utc_now_iso(),
+        constraints=None,
+        assumptions=[],
+        constraint_embedding=None,
+        relaxed_constraints=[],
+        bundle_candidates=[],
+        bundle_match_score=0.0,
+        matched_bundle_id=None,
+        candidate_pois=[],
+        candidate_routes=[],
+        valid_routes=[],
+        scored_routes=[],
+        validation_reports=[],
+        route_results=[],
+        presentation=None,
+        phase_log=[],
+        stream_events=[],
+    )
+
+
+def phase_update(phase: str, **extra: Any) -> dict:
+    entry = {"phase": phase, "ts": utc_now_iso()}
+    return {"current_phase": phase, "phase_log": [entry], **extra}

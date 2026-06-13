@@ -1,67 +1,81 @@
-"""路线规划数据模型"""
+"""路线相关模型。"""
 
-from datetime import datetime, time
 from enum import Enum
 from typing import Optional
+from uuid import uuid4
+
 from pydantic import BaseModel, Field
-from .poi import PoiSummary, TravelMode
 
 
 class RouteSource(str, Enum):
-    """路线来源"""
-    CACHE_HIT = "CACHE_HIT"           # 直接命中知识库
-    CACHE_ADAPTED = "CACHE_ADAPTED"    # 模板适配
-    FRESH_GENERATED = "FRESH_GENERATED"  # 全新生成
+    BUNDLE_HIT = "BUNDLE_HIT"
+    BUNDLE_ADAPTED = "BUNDLE_ADAPTED"
+    COLD_GENERATED = "COLD_GENERATED"
+    DEGRADED = "DEGRADED"
 
 
-class ItineraryStop(BaseModel):
-    """路线中的一个停靠点"""
+class ScoredPoi(BaseModel):
+    poi_id: str
+    name: str
+    category: str
+    district: str
+    lat: float
+    lng: float
+    rating: float
+    price_per_person: int
+    composite_score: float = 0.0
+
+
+class RouteStop(BaseModel):
     sequence: int
-    poi: PoiSummary
-    arrival_time: time
-    departure_time: time
+    poi_id: str
+    poi_name: str
+    category: str
+    arrival_time: str
+    departure_time: str
     visit_duration_min: int
     travel_time_from_prev_min: int = 0
-    travel_mode: TravelMode = TravelMode.START
-    ai_tip: Optional[str] = None         # LLM 生成的贴士
-    estimated_queue_min: Optional[int] = None
-    reservation_url: Optional[str] = None
-
-
-class RouteMetadata(BaseModel):
-    """路线元数据"""
-    total_duration_min: int
-    total_travel_time_min: int
-    total_pois: int
-    average_poi_score: float
-    start_time: time
-    end_time: time
-    weather_note: Optional[str] = None
 
 
 class RoutePlan(BaseModel):
-    """路线方案的完整内部表示"""
-    route_id: Optional[str] = None       # 持久化后回填
-    plan_name: str                       # LLM 生成: "徐汇火锅甜品半日游"
-    summary: str                         # 一句话总结
-    source: RouteSource = RouteSource.FRESH_GENERATED
-    stops: list[ItineraryStop]
-    metadata: RouteMetadata
-    map_deep_link: Optional[str] = None  # 高德地图 deep link
-    created_at: datetime = Field(default_factory=datetime.now)
+    plan_id: str = Field(default_factory=lambda: str(uuid4()))
+    plan_name: str
+    summary: str
+    stops: list[RouteStop]
+    total_duration_min: int
+    estimated_cost_per_person: int
+
+
+class ValidationReport(BaseModel):
+    route_id: str
+    feasible: bool
+    violations: list[str] = Field(default_factory=list)
+
+
+class ScoredRoute(BaseModel):
+    route: RoutePlan
+    execution_score: float
+    quality_score: float
+    preference_score: float
+    final_score: float
+    rank: int = 0
+
+
+class RouteScores(BaseModel):
+    execution: float
+    quality: float
+    final: float
 
 
 class RoutePlanResult(BaseModel):
-    """ExperienceReuseEngine 的返回值，包装了来源信息"""
     route: RoutePlan
-    source: RouteSource
-    matched_template_id: Optional[str] = None  # 命中的模板ID（如有）
+    source: RouteSource = RouteSource.COLD_GENERATED
+    bundle_id: Optional[str] = None
+    rank: int
+    scores: RouteScores
 
 
-class RouteFeedback(BaseModel):
-    """用户反馈"""
-    route_id: str
-    overall_score: float = Field(ge=1.0, le=5.0)
-    poi_ratings: Optional[dict[str, float]] = None  # poi_id → score
-    comments: Optional[str] = None
-    actual_pois_visited: Optional[list[str]] = None  # 实际走了哪些
+class Presentation(BaseModel):
+    title: str
+    summary: str
+    highlights: list[str] = Field(default_factory=list)

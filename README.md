@@ -109,14 +109,29 @@
 | 层级 | 内容 | 作用 |
 |------|------|------|
 | **L1 领域知识** | POI 库 + UGC 摘要库 | 稳定可 RAG，支撑选点依据 |
-| **L2 路线模板** | RouteTemplate（pgvector 语义检索） | 高频场景骨架复用，加速响应 |
+| **L2 路线包** | RouteBundle（向量索引） | 线下预计算路线 + 分数；线上 HOT 检索 |
 | **L3 会话记忆** | 当次 GraphState + 用户反馈 | 动态调整与个性化微调 |
 
-检索顺序：**L1 定候选 → L2 定骨架 → L3 定微调**
+检索顺序：**L1 定 POI 候选 → L2 定 RouteBundle 热路径 → L3 会话微调**
 
 ---
 
 ## 核心规划流程
+
+> **Graph 节点、GraphState 字段、热/冷路径** 以 [`docs/graph-state-design.md`](docs/graph-state-design.md) 为准。
+
+### Plan Run 概要
+
+```
+constraint_extract → route_bundle_search
+    ├─ HOT  → light_validate → light_adapt → bundle_rerank → route_present (Top-K)
+    └─ COLD → poi_retrieve → route_generate → route_validate
+              → route_evaluate → route_present (Top-K) → 异步写入 RouteBundle
+```
+
+**六段（冷路径）：** 约束提取 → POI 检索 → 多候选路线 → 校验 → 评估 → Top-K 输出。
+
+**原则：** 零澄清；模糊输入必出推荐；最耗时步骤通过 **线下 RouteBundle + 向量检索** 加速。
 
 ### 生产请求链路
 
@@ -129,54 +144,22 @@
    → 阶段性结果写 Redis → SSE 推送进度
 
 3. GET /api/v1/routes/stream/{task_id}
-   SSE：intent → retrieve → generate → optimize → validate → done
+   SSE：extract → bundle_search → retrieve → generate → validate → evaluate → done
 
 4. POST /api/v1/routes/{route_id}/feedback
    → 写 PG + 发 MQ → 异步更新模板评分 & 用户画像
 ```
 
-### LangGraph 节点流水线
+### LangGraph 节点（摘要）
+
+详见 [`docs/graph-state-design.md`](docs/graph-state-design.md)。MVP 先实现 **冷路径六段**，再接入 **RouteBundle 热路径**。
 
 ```
-用户 NL 输入 + user_id + 经纬度
-     │
-     ▼
-[1] intent_parse          — LLM 解析 → RouteIntent（结构化约束 + 隐式偏好）
-     │
-     ▼
-[2] constraint_check      — 约束冲突检测；必要时澄清或多方案（Plan A / Plan B）
-     │
-     ▼
-[3] hybrid_retrieval      — L1：POI 结构化 + 向量检索；UGC 评论/摘要 RAG
-     │                       L2：pgvector 检索 Top-K RouteTemplate
-     ▼
-[4] poi_rank              — 多维打分（相关性 / 品质 / 个性化 / 拥挤 / 距离）
-     │
-     ▼
-[5] match_score           — 模板匹配分（语义 + 区域 + 时长 + 预算 + 品类）
-     │
-     ├── score ≥ 0.90  → [6a] cache_hit       — 零 LLM 直出（约束完全一致）
-     ├── 0.75–0.90     → [6b] adapt_template — LLM 轻量适配 (~800ms)
-     └── score < 0.75  → [6c] full_generate  — LLM 完整生成 (~5s)
-     │                                    └→ 质量门禁 → 异步入库模板
-     ▼
-[7] route_optimizer       — 顺序 / 时间窗 / 营业时段 / 路程可行性（独立 CPU 模块）
-     │
-     ▼
-[8] constraint_validator  — 可行性校验；冲突时标注 relaxed_constraints
-     │
-     ▼
-[9] render_output         — 结构化输出 + UGC 依据 + 地图 DeepLink + SSE 推送
-     │
-     ▼
-[10] feedback（异步）     — 更新 L2 模板评分 & L3 用户画像；低分模板淘汰
+constraint_extract → poi_retrieve → route_generate (M条)
+  → route_validate → route_evaluate → route_present (Top-K)
 ```
 
-**职责分工：**
-
-- **Optimizer**：路线顺序、时间轴、约束可行性
-- **LLM**：意图理解、模板适配、叙事文案、权衡解释
-- **UGC RAG**：每站 `ai_tip` 与选点理由必须 grounded，附 1–2 条评论依据
+**Replan**（后续）：`replan_parse → lock_stops → partial_retrieve → local_validate → render_diff`
 
 ### 动态调整（Replan 模式）
 
