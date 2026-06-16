@@ -5,15 +5,16 @@ from functools import lru_cache
 from pathlib import Path
 
 from ..models.route import ScoredPoi
+from ..services.poi_retrieval import RetrievalResult, retrieve_pois as _retrieve
 
 FIXTURES_DIR = Path(__file__).resolve().parents[2] / "fixtures"
+POIS_PATH = FIXTURES_DIR / "pois.json"
 DISTRICTS = ["徐汇区", "静安区", "浦东新区", "黄浦区"]
 
 
 @lru_cache
 def load_pois() -> list[dict]:
-    path = FIXTURES_DIR / "pois.json"
-    with path.open(encoding="utf-8") as f:
+    with POIS_PATH.open(encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -24,44 +25,39 @@ def parse_district(address: str) -> str:
     return ""
 
 
-def display_name(poi: dict) -> str:
-    name = poi["name"]
-    branch = (poi.get("branch_name") or "").strip()
-    if branch:
-        return f"{name}（{branch}）"
-    return name
-
-
-def to_scored_poi(poi: dict, rank_index: int) -> ScoredPoi:
-    categories = poi.get("categories") or []
-    category = categories[0] if categories else "其他"
-    address = poi.get("address") or ""
-    return ScoredPoi(
-        poi_id=f"dp:{poi['openshopid']}",
-        name=display_name(poi),
-        category=category,
-        district=parse_district(address),
-        lat=float(poi["latitude"]),
-        lng=float(poi["longitude"]),
-        rating=float(poi.get("star") or 4.0),
-        price_per_person=int(poi.get("avgprice") or 0),
-        composite_score=max(0.0, 1.0 - rank_index * 0.05),
-    )
-
-
 def retrieve_pois(
     district: str | None = None,
     limit: int = 10,
+    *,
+    purpose: str | None = None,
+    preferred_cuisines: list[str] | None = None,
+    activity_tags: list[str] | None = None,
+    budget_per_person: int | None = None,
 ) -> list[ScoredPoi]:
-    pois = [p for p in load_pois() if p.get("openstatus") == 1]
-    if district:
-        pois = [p for p in pois if parse_district(p.get("address", "")) == district]
-    pois = sorted(pois, key=lambda p: float(p.get("star") or 0), reverse=True)
-    if not pois and district:
-        pois = [p for p in load_pois() if p.get("openstatus") == 1]
-        pois = sorted(pois, key=lambda p: float(p.get("star") or 0), reverse=True)
+    return _retrieve(
+        district=district,
+        limit=limit,
+        purpose=purpose,
+        preferred_cuisines=preferred_cuisines,
+        activity_tags=activity_tags,
+        budget_per_person=budget_per_person,
+    ).pois
 
-    result: list[ScoredPoi] = []
-    for idx, poi in enumerate(pois[:limit]):
-        result.append(to_scored_poi(poi, idx))
-    return result
+
+def retrieve_pois_with_meta(
+    district: str | None = None,
+    limit: int = 10,
+    *,
+    purpose: str | None = None,
+    preferred_cuisines: list[str] | None = None,
+    activity_tags: list[str] | None = None,
+    budget_per_person: int | None = None,
+) -> RetrievalResult:
+    return _retrieve(
+        district=district,
+        limit=limit,
+        purpose=purpose,
+        preferred_cuisines=preferred_cuisines,
+        activity_tags=activity_tags,
+        budget_per_person=budget_per_person,
+    )
