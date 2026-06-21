@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from ..graph.state import GraphState
-from ..models.constraints import Assumption, Constraints, TripPurpose
+from ..models.constraints import Assumption, Constraints, IntentDomain
 
 DISTRICTS = ["徐汇区", "静安区", "浦东新区", "黄浦区"]
 DEFAULT_DISTRICT = "徐汇区"
@@ -25,6 +25,10 @@ CUISINE_KEYWORDS: list[tuple[str, list[str]]] = [
     ("甜品", ["甜品", "甜点"]),
     ("小吃快餐", ["小吃", "快餐"]),
 ]
+
+_DINING_TRIGGER = ("吃", "美食", "餐", "饭", "逛吃", "料理", "聚餐", "宴请", "午餐", "晚餐")
+_SIGHTSEEING_TRIGGER = ("逛", "玩", "游", "观光", "打卡", "展览", "博物馆", "公园", "景点", "逛逛")
+_SHOPPING_TRIGGER = ("买", "购物", "逛街买", "商场")
 
 
 def detect_preferred_cuisines(query: str) -> list[str] | None:
@@ -70,26 +74,30 @@ def detect_return_by(query: str) -> str | None:
     return None
 
 
-def detect_purpose(query: str) -> TripPurpose:
-    if detect_preferred_cuisines(query):
-        if any(k in query for k in ("逛", "玩")) and any(
-            k in query for k in ("吃", "餐", "美食", "逛吃")
-        ):
-            return TripPurpose.MIXED
-        return TripPurpose.DINING
-    if any(k in query for k in ("博物馆", "美术馆", "展览")):
-        return TripPurpose.SIGHTSEEING
-    if any(k in query for k in ("吃", "美食", "餐", "饭")) and any(
-        k in query for k in ("逛", "玩")
-    ):
-        return TripPurpose.MIXED
-    if any(k in query for k in ("吃", "美食", "餐", "饭", "逛吃")):
-        return TripPurpose.DINING
-    if any(k in query for k in ("买", "购物")):
-        return TripPurpose.SHOPPING
-    if any(k in query for k in ("玩", "逛", "观光", "打卡")):
-        return TripPurpose.SIGHTSEEING
-    return TripPurpose.MIXED
+def detect_domains(query: str) -> list[IntentDomain]:
+    """从 query 推断 POI 候选涉及的意图域（可多选，无 MIXED）。"""
+    domains: list[IntentDomain] = []
+    preferred = detect_preferred_cuisines(query)
+
+    if preferred or any(k in query for k in _DINING_TRIGGER):
+        domains.append(IntentDomain.DINING)
+    if any(k in query for k in _SIGHTSEEING_TRIGGER):
+        domains.append(IntentDomain.SIGHTSEEING)
+    if any(k in query for k in _SHOPPING_TRIGGER):
+        domains.append(IntentDomain.SHOPPING)
+
+    if not domains:
+        domains = [IntentDomain.SIGHTSEEING]
+    return domains
+
+
+def detect_activity_tags(query: str) -> list[str] | None:
+    tags: list[str] = []
+    if "逛吃" in query or ("逛" in query and any(k in query for k in ("吃", "餐", "美食", "饭"))):
+        tags.append("逛吃")
+    elif "逛" in query or "玩" in query:
+        tags.append("逛")
+    return tags or None
 
 
 def rule_based_extract(state: GraphState) -> tuple[Constraints, list[Assumption]]:
@@ -136,13 +144,13 @@ def rule_based_extract(state: GraphState) -> tuple[Constraints, list[Assumption]
 
     constraints = Constraints(
         raw_query=query,
-        purpose=detect_purpose(query),
+        domains=detect_domains(query),
         district=district,
         time_budget_minutes=minutes,
         return_by=return_by,
         budget_per_person=budget,
         poi_count=DEFAULT_POI_COUNT,
         preferred_cuisines=detect_preferred_cuisines(query),
-        activity_tags=["逛吃"] if "逛" in query or "玩" in query else None,
+        activity_tags=detect_activity_tags(query),
     )
     return constraints, assumptions

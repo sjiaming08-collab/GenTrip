@@ -6,11 +6,10 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
-class TripPurpose(str, Enum):
-    DINING = "DINING"
-    SIGHTSEEING = "SIGHTSEEING"
-    SHOPPING = "SHOPPING"
-    MIXED = "MIXED"
+class IntentDomain(str, Enum):
+    DINING = "dining"
+    SIGHTSEEING = "sightseeing"
+    SHOPPING = "shopping"
 
 
 class Assumption(BaseModel):
@@ -23,7 +22,7 @@ class Assumption(BaseModel):
 
 class Constraints(BaseModel):
     raw_query: str
-    purpose: TripPurpose = TripPurpose.MIXED
+    domains: list[IntentDomain] = Field(min_length=1)
     district: str
     time_budget_minutes: Optional[int] = None
     return_by: Optional[str] = None

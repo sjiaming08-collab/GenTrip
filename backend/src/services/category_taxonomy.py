@@ -1,4 +1,4 @@
-"""类目 taxonomy — 用户/约束词 → POI 叶子类目集合。"""
+"""类目 taxonomy — 意图域 → POI 叶子类目。"""
 
 from __future__ import annotations
 
@@ -6,10 +6,16 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
-from ..models.constraints import TripPurpose
+from ..models.retrieval import IntentDomain
 
 FIXTURES_DIR = Path(__file__).resolve().parents[2] / "fixtures"
 TAXONOMY_PATH = FIXTURES_DIR / "category_taxonomy.json"
+
+DOMAIN_TO_PURPOSE_KEY = {
+    IntentDomain.DINING: "DINING",
+    IntentDomain.SIGHTSEEING: "SIGHTSEEING",
+    IntentDomain.SHOPPING: "SHOPPING",
+}
 
 
 @lru_cache
@@ -41,49 +47,29 @@ def normalize_cuisine_term(raw: str) -> str:
     return _aliases().get(term, term)
 
 
-def purpose_allowed_leaves(purpose: str | None) -> set[str]:
-    key = purpose or TripPurpose.MIXED.value
-    leaves = _purpose_map().get(key)
-    if leaves is None:
-        leaves = _purpose_map().get(TripPurpose.MIXED.value, [])
+def domain_leaves(domain: IntentDomain) -> set[str]:
+    key = DOMAIN_TO_PURPOSE_KEY[domain]
+    leaves = _purpose_map().get(key, [])
     return set(leaves)
 
 
-def resolve_purpose_leaves(
-    purpose: str | None,
-    activity_tags: list[str] | None,
-) -> set[str]:
-    """MIXED 时根据 activity_tags 推断有效叶子范围。"""
-    if purpose and purpose != TripPurpose.MIXED.value:
-        return purpose_allowed_leaves(purpose)
-
-    if not activity_tags:
-        return purpose_allowed_leaves(TripPurpose.MIXED.value)
-
-    text = "".join(activity_tags)
+def all_retrieval_leaves() -> set[str]:
     leaves: set[str] = set()
-    if any(k in text for k in ("吃", "餐", "美食", "逛吃", "料理", "饭")):
-        leaves |= purpose_allowed_leaves(TripPurpose.DINING.value)
-    if any(k in text for k in ("买", "购物")):
-        leaves |= purpose_allowed_leaves(TripPurpose.SHOPPING.value)
-    if any(k in text for k in ("玩", "逛", "观光", "打卡", "展览", "博物馆")):
-        leaves |= purpose_allowed_leaves(TripPurpose.SIGHTSEEING.value)
-
-    if leaves:
-        return leaves
-    return purpose_allowed_leaves(TripPurpose.MIXED.value)
+    for domain in IntentDomain:
+        leaves |= domain_leaves(domain)
+    return leaves
 
 
-def expand_cuisines(preferred_cuisines: list[str] | None) -> set[str] | None:
-    """将 preferred_cuisines 展开为叶子类目集合；None 表示不按菜系收窄。"""
-    if not preferred_cuisines:
+def expand_categories(categories: list[str] | None) -> set[str] | None:
+    """将 categories（叶子或 group）展开为叶子集合。"""
+    if not categories:
         return None
 
     expanded: set[str] = set()
     groups = _groups()
     parents = _parents()
 
-    for raw in preferred_cuisines:
+    for raw in categories:
         key = normalize_cuisine_term(raw)
         if key in groups:
             expanded.update(leaf for leaf, parent in parents.items() if parent == key)
@@ -92,28 +78,27 @@ def expand_cuisines(preferred_cuisines: list[str] | None) -> set[str] | None:
     return expanded
 
 
-def compute_final_leaves(
-    *,
-    purpose: str | None,
-    preferred_cuisines: list[str] | None,
-    activity_tags: list[str] | None,
+def resolve_domain_leaves(
+    domain: IntentDomain,
+    categories: list[str] | None,
 ) -> set[str]:
-    purpose_leaves = resolve_purpose_leaves(purpose, activity_tags)
-    cuisine_leaves = expand_cuisines(preferred_cuisines)
-    if cuisine_leaves is None:
-        return purpose_leaves
-    return cuisine_leaves & purpose_leaves
+    """单域类目：有 categories 则直接展开；否则使用该域全部叶子。"""
+    allowed = domain_leaves(domain)
+    expanded = expand_categories(categories)
+    if expanded is None:
+        return allowed
+    return expanded & allowed if expanded else allowed
 
 
-def widen_preferred_to_parent_groups(preferred_cuisines: list[str] | None) -> list[str] | None:
+def widen_categories_to_parent_groups(categories: list[str] | None) -> list[str] | None:
     """叶子菜系无结果时，扩到父级 group（如 川菜 → 中餐）。"""
-    if not preferred_cuisines:
+    if not categories:
         return None
 
     groups = _groups()
     parents = _parents()
     widened: list[str] = []
-    for raw in preferred_cuisines:
+    for raw in categories:
         key = normalize_cuisine_term(raw)
         if key in groups:
             widened.append(key)
@@ -129,8 +114,35 @@ def parent_group_of_leaf(leaf: str) -> str | None:
 
 
 def validate_against_poi_categories(poi_categories: set[str]) -> list[str]:
-    """返回 POI 中出现但未在 parents 中声明的餐饮类目。"""
-    known = set(_parents()) | set(_purpose_map().get(TripPurpose.SIGHTSEEING.value, []))
-    known |= set(_purpose_map().get(TripPurpose.SHOPPING.value, []))
-    known.add("其他")
+    known = all_retrieval_leaves() | {"其他"}
     return sorted(poi_categories - known)
+
+
+# --- 兼容旧测试（deprecated，检索主路径请用 resolve_domain_leaves）---
+
+def expand_cuisines(preferred_cuisines: list[str] | None) -> set[str] | None:
+    return expand_categories(preferred_cuisines)
+
+
+def widen_preferred_to_parent_groups(preferred_cuisines: list[str] | None) -> list[str] | None:
+    return widen_categories_to_parent_groups(preferred_cuisines)
+
+
+def compute_final_leaves(
+    *,
+    domains: list[str] | None,
+    preferred_cuisines: list[str] | None,
+) -> set[str]:
+    """兼容旧测试；新检索请用 resolve_domain_leaves + 多域 merge。"""
+    from ..models.retrieval import DomainSpec
+
+    specs: list[DomainSpec] = []
+    for raw in domains or []:
+        domain = IntentDomain(raw)
+        categories = preferred_cuisines if domain == IntentDomain.DINING else None
+        specs.append(DomainSpec(domain=domain, categories=categories))
+
+    leaves: set[str] = set()
+    for spec in specs:
+        leaves |= resolve_domain_leaves(spec.domain, spec.categories)
+    return leaves

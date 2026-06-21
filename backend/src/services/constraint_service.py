@@ -11,13 +11,14 @@ from ..graph.state import GraphState
 from ..llm.constraint_extract_llm import llm_extract_constraint
 from ..llm.exceptions import LLMError
 from ..llm.schemas import ConstraintExtractResult
-from ..models.constraints import Assumption, Constraints
+from ..models.constraints import Assumption, Constraints, IntentDomain
 from .constraint_rules import (
-    DEFAULT_BUDGET,
     DEFAULT_DISTRICT,
     DEFAULT_MINUTES,
     DEFAULT_POI_COUNT,
+    DEFAULT_BUDGET,
     DISTRICTS,
+    detect_domains,
     rule_based_extract,
 )
 
@@ -109,9 +110,20 @@ def normalize_llm_result(
 
     poi_count = result.poi_count if result.poi_count and result.poi_count > 0 else DEFAULT_POI_COUNT
 
+    domains = list(dict.fromkeys(result.domains))
+    if not domains:
+        domains = detect_domains(query)
+        assumptions.append(
+            _default_assumption(
+                "domains",
+                ",".join(d.value for d in domains),
+                f"未识别意图域，按 query 推断为 {', '.join(d.value for d in domains)}",
+            )
+        )
+
     constraints = Constraints(
         raw_query=query,
-        purpose=result.purpose,
+        domains=domains,
         district=district,
         time_budget_minutes=minutes,
         return_by=return_by,

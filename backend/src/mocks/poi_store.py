@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from ..models.route import ScoredPoi
-from ..services.poi_retrieval import RetrievalResult, retrieve_pois as _retrieve
+from ..services.poi_retrieval import RetrievalResultLegacy, retrieve_pois as _retrieve
 
 FIXTURES_DIR = Path(__file__).resolve().parents[2] / "fixtures"
 POIS_PATH = FIXTURES_DIR / "pois.json"
@@ -29,17 +29,15 @@ def retrieve_pois(
     district: str | None = None,
     limit: int = 10,
     *,
-    purpose: str | None = None,
+    domains: list[str] | None = None,
     preferred_cuisines: list[str] | None = None,
-    activity_tags: list[str] | None = None,
     budget_per_person: int | None = None,
 ) -> list[ScoredPoi]:
     return _retrieve(
         district=district,
         limit=limit,
-        purpose=purpose,
+        domains=domains,
         preferred_cuisines=preferred_cuisines,
-        activity_tags=activity_tags,
         budget_per_person=budget_per_person,
     ).pois
 
@@ -48,16 +46,14 @@ def retrieve_pois_with_meta(
     district: str | None = None,
     limit: int = 10,
     *,
-    purpose: str | None = None,
+    domains: list[str] | None = None,
     preferred_cuisines: list[str] | None = None,
-    activity_tags: list[str] | None = None,
     budget_per_person: int | None = None,
-) -> RetrievalResult:
+) -> RetrievalResultLegacy:
     return _retrieve(
         district=district,
         limit=limit,
-        purpose=purpose,
+        domains=domains,
         preferred_cuisines=preferred_cuisines,
-        activity_tags=activity_tags,
         budget_per_person=budget_per_person,
     )

@@ -45,6 +45,8 @@ class GraphState(TypedDict, total=False):
     bundle_match_score: float
     matched_bundle_id: Optional[str]
     candidate_pois: list
+    candidate_pois_by_dim: dict
+    retrieval_meta: Optional[dict]
     candidate_routes: list
     valid_routes: list
     scored_routes: list
@@ -95,6 +97,8 @@ def build_initial_state(
         bundle_match_score=0.0,
         matched_bundle_id=None,
         candidate_pois=[],
+        candidate_pois_by_dim={},
+        retrieval_meta=None,
         candidate_routes=[],
         valid_routes=[],
         scored_routes=[],

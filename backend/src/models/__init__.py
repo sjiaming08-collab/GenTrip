@@ -1,6 +1,6 @@
 """领域模型 — Constraints / Route / Assumption 等。"""
 
-from .constraints import Assumption, Constraints, TripPurpose
+from .constraints import Assumption, Constraints, IntentDomain
 from .route import (
     RoutePlan,
     RoutePlanResult,
@@ -14,7 +14,7 @@ from .route import (
 __all__ = [
     "Assumption",
     "Constraints",
-    "TripPurpose",
+    "IntentDomain",
     "RoutePlan",
     "RoutePlanResult",
     "RouteSource",

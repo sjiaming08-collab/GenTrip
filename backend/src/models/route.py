@@ -24,6 +24,7 @@ class ScoredPoi(BaseModel):
     rating: float
     price_per_person: int
     composite_score: float = 0.0
+    dimension: Optional[str] = None
 
 
 class RouteStop(BaseModel):

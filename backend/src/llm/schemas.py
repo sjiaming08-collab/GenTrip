@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field
 
-from ..models.constraints import TripPurpose
+from ..models.constraints import IntentDomain
 
 
 class LlmAssumption(BaseModel):
@@ -13,7 +13,7 @@ class LlmAssumption(BaseModel):
 
 
 class ConstraintExtractResult(BaseModel):
-    purpose: TripPurpose = TripPurpose.MIXED
+    domains: list[IntentDomain] = Field(default_factory=list)
     district: str | None = None
     time_budget_minutes: int | None = None
     return_by: str | None = None
