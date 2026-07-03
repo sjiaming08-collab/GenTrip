@@ -36,7 +36,6 @@ class GraphState(TypedDict, total=False):
 
     # L2 REASONING
     constraints: Optional[dict]
-    geo_scope: Optional[dict]
     assumptions: Annotated[list[dict], merge_assumptions]
     constraint_embedding: Optional[list[float]]
     relaxed_constraints: Annotated[list[str], operator.add]
@@ -48,7 +47,6 @@ class GraphState(TypedDict, total=False):
     candidate_pois: list
     candidate_pois_by_dim: dict
     retrieval_meta: Optional[dict]
-    route_generation_meta: Optional[dict]
     candidate_routes: list
     valid_routes: list
     scored_routes: list
@@ -92,7 +90,6 @@ def build_initial_state(
         user_lng=user_lng,
         input_ts=utc_now_iso(),
         constraints=None,
-        geo_scope=None,
         assumptions=[],
         constraint_embedding=None,
         relaxed_constraints=[],
@@ -102,7 +99,6 @@ def build_initial_state(
         candidate_pois=[],
         candidate_pois_by_dim={},
         retrieval_meta=None,
-        route_generation_meta=None,
         candidate_routes=[],
         valid_routes=[],
         scored_routes=[],

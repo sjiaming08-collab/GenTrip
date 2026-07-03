@@ -1,96 +1,57 @@
 <script setup lang="ts">
-import type { RouteStop } from '../types'
+import type { ItineraryStop, GeoPoint } from '../types'
 
+// ============================================================
+// Props (组件接口)
+// ============================================================
 defineProps<{
-  stops?: RouteStop[]
-  selectedStopId?: string | null
+  stops?: ItineraryStop[]
+  center?: GeoPoint
+  zoom?: number
 }>()
 
+// ============================================================
+// Events
+// ============================================================
 const emit = defineEmits<{
   selectPoi: [poiId: string]
 }>()
 </script>
 
 <template>
-  <section class="map-container">
+  <div class="map-container">
     <div class="map-placeholder">
-      <div class="map-header">
-        <h3>路线概览</h3>
-        <p>当前后端未返回 POI 经纬度，先展示站点顺序；后续可接高德地图 Marker。</p>
-      </div>
-
-      <ol v-if="stops?.length" class="route-list">
-        <li
-          v-for="stop in stops"
-          :key="stop.poi_id"
-          :class="{ selected: selectedStopId === stop.poi_id }"
-          @click="emit('selectPoi', stop.poi_id)"
-        >
-          <span>{{ stop.sequence }}</span>
-          <strong>{{ stop.poi_name }}</strong>
-          <small>{{ stop.category }}</small>
-        </li>
-      </ol>
-      <p v-else class="hint">规划完成后显示站点顺序</p>
+      <!-- TODO: 集成高德地图 -->
+      <!-- 1. 加载 @amap/amap-jsapi-loader -->
+      <!-- 2. 初始化地图实例 -->
+      <!-- 3. 渲染 stops 为 Marker -->
+      <!-- 4. 绘制路线 Polyline -->
+      <p>地图加载中...</p>
+      <p class="hint">需要高德地图 JS API Key</p>
     </div>
-  </section>
+  </div>
 </template>
 
 <style scoped>
 .map-container {
-  min-height: 400px;
-  border: 1px solid #e5e7eb;
+  width: 100%;
+  height: 400px;
+  border: 1px solid #eee;
   border-radius: 8px;
   overflow: hidden;
-  background: #f9fafb;
 }
 .map-placeholder {
+  width: 100%;
   height: 100%;
-  padding: 1rem;
-  color: #374151;
-}
-.map-header h3 {
-  margin: 0;
-}
-.map-header p,
-.hint {
-  color: #6b7280;
-  font-size: 0.9rem;
-}
-.route-list {
-  list-style: none;
-  display: grid;
-  gap: 0.6rem;
-  padding: 0;
-  margin: 1rem 0 0;
-}
-.route-list li {
-  display: grid;
-  grid-template-columns: 1.5rem 1fr auto;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.7rem;
-  border-radius: 8px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  cursor: pointer;
-}
-.route-list li.selected {
-  border-color: #2563eb;
-  background: #eff6ff;
-}
-.route-list span {
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  border-radius: 999px;
-  background: #e0f2fe;
-  color: #0369a1;
-  font-weight: 700;
+  background: #f8f8f8;
+  color: #999;
 }
-.route-list small {
-  color: #6b7280;
+.hint {
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
 }
 </style>

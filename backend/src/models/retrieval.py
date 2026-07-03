@@ -19,11 +19,6 @@ class RetrievalFilters(BaseModel):
     """跨域共享的过滤条件。"""
 
     district: Optional[str] = None
-    business_area: Optional[str] = None
-    center_lat: Optional[float] = None
-    center_lng: Optional[float] = None
-    radius_m: Optional[int] = None
-    geo_scope: Optional[dict] = None
     budget_per_person: Optional[int] = None
 
 

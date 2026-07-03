@@ -1,13 +1,13 @@
 """constraint_rules 单元测试。"""
 
 from src.graph.state import build_initial_state
-from src.models.constraints import IntentDomain
+from src.models.constraints import TripPurpose
 from src.services.constraint_rules import (
     detect_budget,
     detect_district,
-    detect_domains,
     detect_minutes,
     detect_preferred_cuisines,
+    detect_purpose,
     detect_return_by,
     rule_based_extract,
 )
@@ -28,10 +28,10 @@ def test_detect_return_by():
     assert detect_return_by("7点前回家") == "07:00"
 
 
-def test_detect_domains():
-    assert detect_domains("静安购物") == [IntentDomain.SHOPPING]
-    assert detect_domains("徐汇逛吃") == [IntentDomain.DINING, IntentDomain.SIGHTSEEING]
-    assert detect_domains("想吃中餐") == [IntentDomain.DINING]
+def test_detect_purpose():
+    assert detect_purpose("静安购物") == TripPurpose.SHOPPING
+    assert detect_purpose("徐汇逛吃") == TripPurpose.MIXED
+    assert detect_purpose("想吃中餐") == TripPurpose.DINING
 
 
 def test_detect_preferred_cuisines():
@@ -42,7 +42,7 @@ def test_detect_preferred_cuisines():
 def test_rule_based_extract_chinese_food():
     state = build_initial_state("徐汇区想吃中餐")
     constraints, _ = rule_based_extract(state)
-    assert constraints.domains == [IntentDomain.DINING]
+    assert constraints.purpose == TripPurpose.DINING
     assert constraints.preferred_cuisines == ["中餐"]
     assert constraints.district == "徐汇区"
 
@@ -64,7 +64,6 @@ def test_rule_based_extract_explicit():
     constraints, assumptions = rule_based_extract(state)
 
     assert constraints.district == "黄浦区"
-    assert constraints.domains == [IntentDomain.DINING, IntentDomain.SIGHTSEEING]
     assert constraints.budget_per_person == 200
     assert constraints.time_budget_minutes == 180
     assert constraints.activity_tags == ["逛吃"]

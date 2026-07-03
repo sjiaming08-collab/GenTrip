@@ -8,13 +8,13 @@ from src.config import settings
 from src.graph.state import build_initial_state
 from src.llm.exceptions import LLMError
 from src.llm.schemas import ConstraintExtractResult, LlmAssumption
-from src.models.constraints import IntentDomain
+from src.models.constraints import TripPurpose
 from src.services.constraint_service import extract, normalize_llm_result
 
 
 def test_normalize_llm_result_fills_defaults():
     result = ConstraintExtractResult(
-        domains=[IntentDomain.SIGHTSEEING],
+        purpose=TripPurpose.SIGHTSEEING,
         district=None,
         budget_per_person=None,
         time_budget_minutes=None,
@@ -24,13 +24,13 @@ def test_normalize_llm_result_fills_defaults():
     assert constraints.district == "徐汇区"
     assert constraints.budget_per_person == 150
     assert constraints.time_budget_minutes == 180
-    assert constraints.domains == [IntentDomain.SIGHTSEEING]
+    assert constraints.purpose == TripPurpose.SIGHTSEEING
     assert len(assumptions) >= 3
 
 
 def test_normalize_llm_result_explicit():
     result = ConstraintExtractResult(
-        domains=[IntentDomain.DINING, IntentDomain.SIGHTSEEING],
+        purpose=TripPurpose.MIXED,
         district="黄浦区",
         budget_per_person=200,
         time_budget_minutes=180,
@@ -40,7 +40,6 @@ def test_normalize_llm_result_explicit():
     constraints, assumptions = normalize_llm_result(result, "黄浦区逛吃")
 
     assert constraints.district == "黄浦区"
-    assert constraints.domains == [IntentDomain.DINING, IntentDomain.SIGHTSEEING]
     assert constraints.budget_per_person == 200
     assert assumptions == []
 
@@ -51,7 +50,6 @@ async def test_extract_rule_only_by_default():
     constraints, assumptions = await extract(state)
 
     assert constraints.district == "徐汇区"
-    assert constraints.domains == [IntentDomain.SIGHTSEEING]
     assert len(assumptions) == 3
 
 
@@ -62,7 +60,7 @@ async def test_extract_llm_with_fallback(monkeypatch):
     monkeypatch.setattr(settings, "constraint_extract_mode", "llm_with_fallback")
 
     mock_result = ConstraintExtractResult(
-        domains=[IntentDomain.DINING],
+        purpose=TripPurpose.DINING,
         district="静安区",
         budget_per_person=120,
         time_budget_minutes=120,
@@ -84,7 +82,6 @@ async def test_extract_llm_with_fallback(monkeypatch):
         constraints, assumptions = await extract(state)
 
     assert constraints.district == "静安区"
-    assert constraints.domains == [IntentDomain.DINING]
     assert constraints.budget_per_person == 120
     assert constraints.preferred_cuisines == ["日料"]
     assert any(a.slot == "time_budget_minutes" for a in assumptions)
@@ -104,4 +101,3 @@ async def test_extract_llm_fallback_on_error(monkeypatch):
         constraints, _ = await extract(state)
 
     assert constraints.district == "徐汇区"
-    assert constraints.domains == [IntentDomain.DINING, IntentDomain.SIGHTSEEING]

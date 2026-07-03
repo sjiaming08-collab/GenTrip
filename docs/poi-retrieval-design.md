@@ -3,10 +3,6 @@
 > 范围：**用户提问 → 候选 POI 列表**（`poi_retrieve` 节点及支撑模块）。  
 > 不涉及：路线生成、校验、评估、展示。
 
-## 0. 当前实现阶段（2026-06-28）
-
-当前 POI 检索已经从单一 `district` 过滤升级为 **GeoScope 优先**：`poi_retrieve` 读取上游 `geo_resolve` 写入的 `geo_scope`，并按 `business_area → radius → district → citywide` 逐级放宽。`district` 保留为兼容字段，但不再是唯一地点约束。
-
 ---
 
 ## 1. 设计目标
@@ -40,8 +36,7 @@
 | 字段 | 用途 |
 |------|------|
 | `user_query` | 主解析来源 |
-| `constraints` | 可选；沿用上游 `constraint_extract` 的 budget / preferred_cuisines / activity_tags；`district` 仅作兼容兜底 |
-| `geo_scope` | 可选；来自 `geo_resolve`，优先提供 business_area / center / radius / district |
+| `constraints` | 可选；沿用上游 `constraint_extract` 的 district / budget / preferred_cuisines / activity_tags |
 
 ### 输出（GraphState）
 
@@ -69,7 +64,7 @@ user_query (+ constraints)
         │
         ▼
  RetrievalPlan
-   ├─ filters: { geo_scope, business_area, center_lat/lng, radius_m, district, budget_per_person }
+   ├─ filters: { district, budget_per_person }
    └─ domains: [ DomainSpec, ... ]
         │
         ▼
@@ -138,19 +133,19 @@ DomainSpec:
 
 | 步骤 | 变化 |
 |------|------|
-| R0 | 原始 GeoScope + budget + categories |
+| R0 | 原始 district + budget + categories |
 | R1 | 忽略 budget |
 | R2 | categories 扩到父级 group |
 | R3 | categories 清空（全部餐饮叶子） |
-| Gx | 空间范围按 business_area → radius → district → citywide 放宽 |
+| R4 | district 清空（全市） |
 
 ### sightseeing
 
 | 步骤 | 变化 |
 |------|------|
-| R0 | 原始 GeoScope + categories |
+| R0 | district + categories |
 | R1 | categories 清空 |
-| Gx | 空间范围按 GeoScope 放宽到 citywide |
+| R2 | district 清空 |
 
 ### shopping
 
@@ -267,7 +262,7 @@ python scripts/run_poi_retrieve_node.py "静安日料，人均120" --district �
 
 输出该节点后的 state 快照，不经过后续节点。
 
-### 前三节点：constraint_extract → geo_resolve → poi_retrieve
+### 前两节点：constraint_extract → poi_retrieve
 
 ```bash
 # 使用 .env 里的 LLM 配置

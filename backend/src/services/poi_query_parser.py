@@ -119,29 +119,12 @@ def _default_domain(query: str) -> DomainSpec:
     return DomainSpec(domain=IntentDomain.SIGHTSEEING, categories=None)
 
 
-def _filters_from_geo_scope(geo_scope: dict | None, constraints: dict, query: str) -> RetrievalFilters:
-    budget = constraints.get("budget_per_person")
-    if geo_scope:
-        return RetrievalFilters(
-            district=geo_scope.get("district"),
-            business_area=geo_scope.get("business_area"),
-            center_lat=geo_scope.get("center_lat"),
-            center_lng=geo_scope.get("center_lng"),
-            radius_m=geo_scope.get("radius_m"),
-            geo_scope=geo_scope,
-            budget_per_person=budget,
-        )
-
-    return RetrievalFilters(
-        district=constraints.get("district") or detect_district(query) or DEFAULT_DISTRICT,
-        budget_per_person=budget,
-    )
-
-
 def parse_retrieval_plan(state: GraphState) -> RetrievalPlan:
     query = state["user_query"]
     constraints = state.get("constraints") or {}
-    filters = _filters_from_geo_scope(state.get("geo_scope"), constraints, query)
+
+    district = constraints.get("district") or detect_district(query) or DEFAULT_DISTRICT
+    budget = constraints.get("budget_per_person")
 
     if constraints.get("domains"):
         domains = _domain_specs_from_constraints(constraints, query)
@@ -159,6 +142,6 @@ def parse_retrieval_plan(state: GraphState) -> RetrievalPlan:
 
     return RetrievalPlan(
         raw_query=query,
-        filters=filters,
+        filters=RetrievalFilters(district=district, budget_per_person=budget),
         domains=domains,
     )

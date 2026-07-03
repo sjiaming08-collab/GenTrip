@@ -3,10 +3,6 @@
 > 本文档定义单 Agent Plan 流程下的 **GraphState**、**六段式流水线**、**热路径（RouteBundle 向量检索）** 与 **冷路径（全量生成评估）**。  
 > 对齐原则：**零澄清、输入即推荐、单 Agent、Top-K 输出**。
 
-## 0. 当前实现阶段（2026-06-28）
-
-当前实现为 **P1 冷路径 + GeoScope**，不是完整热/冷双路径：`constraint_extract → geo_resolve → poi_retrieve → route_generate → route_validate → route_evaluate → route_present`。`geo_scope` 已进入 GraphState L2，`RouteBundle`、`auto_relax` 重试子图和 Replan 仍是后续阶段。
-
 ---
 
 ## 1. Plan Run 六段式流水线
@@ -281,7 +277,7 @@ START
 **Step A — 仅冷路径六段（无 Bundle）：**
 
 ```
-constraint_extract → geo_resolve → poi_retrieve → route_generate
+constraint_extract → poi_retrieve → route_generate
   → route_validate → route_evaluate → route_present → END
 ```
 

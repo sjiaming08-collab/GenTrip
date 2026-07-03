@@ -183,15 +183,6 @@ GenTrip 的 `Constraints.district` 来自用户 query，召回策略：
    - district 来源：逆地理编码（lat/lng → 区县）或 address 规则解析
    - MVP 可继续用 Mock fixtures 的 district；接点评后增加 geocode  enrichment 任务
 4. district 为空时：按用户 lat/lng 半径检索，不强制区县匹配
-
-### 5.1 当前实现修正：GeoScope 优先
-
-当前主链路不应只依赖 `Constraints.district`。地点处理统一为 `GeoResolver → GeoScope → POI retrieval`：
-
-1. `district` 是 GeoScope 的兼容字段，适合区县级输入。
-2. `business_area` 适合「徐家汇」「静安寺」「衡复」等商圈级输入。
-3. `lat/lng + radius_m` 适合「武康路附近」「附近」等半径检索。
-4. POI 数据至少应保留 `district`、`business_area`、`address`、`location`，以支持从粗到细的空间召回与放宽。
 ```
 
 ---
@@ -233,7 +224,7 @@ PostgreSQL upsert + 可选向量索引（constraint_embedding 近邻 POI）
 
 ```
 读本地 PoiRecord（禁止 Plan Run 内直调点评 API）
-  → 过滤：status=online, city, GeoScope(business_area/半径/district), categories, budget
+  → 过滤：status=online, city, district/半径, categories, budget
   → 排序：composite_score = f(rating, review_count, distance, preference_match, quality_flags)
   → Top-N → ScoredPoi → GraphState.candidate_pois
 ```
@@ -277,8 +268,7 @@ PostgreSQL upsert + 可选向量索引（constraint_embedding 近邻 POI）
 
 | 阶段 | 内容 | 状态 |
 |------|------|------|
-| **Step A** | `fixtures/pois.json` + `mocks/poi_store.py` | ✅ 已完成 |
-| **Step A.5** | GeoScope 接入主链路；兼容 `district/business_area/location` | ✅ 当前 |
+| **Step A** | `fixtures/pois.json` + `mocks/poi_store.py` | ✅ 当前 |
 | **Step B** | `PoiRecord` PostgreSQL + 灌库脚本 + `services/poi_service.py` | ⬜ |
 | **Step C** | 点评 `pagequerypoi` / `batchgetpoi` 同步 Worker | ⬜ |
 | **Step D** | district geocode、`business_hour` 参与 `route_validate` | ⬜ |
