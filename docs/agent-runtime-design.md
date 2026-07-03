@@ -5,11 +5,16 @@
 
 ---
 
+## 0. 当前实现阶段（2026-06-28）
+
+当前代码处于 **P1：GeoScope 驱动的冷路径 Plan Run**：主链路为 `constraint_extract → geo_resolve → poi_retrieve → route_generate → route_validate → route_evaluate → route_present`。`RouteBundle` 热路径仍是 P2 目标，不应早于 GeoScope、POI 召回质量和路线生成质量稳定之前实现。
+
+地点约束不再建议由 `constraint_extract` 直接硬输出固定 `district`。推荐链路是：用户地点表达 → `GeoResolver` → `GeoScope` → `poi_retrieve`。`district` 仍保留为兼容字段，但只是 `GeoScope` 的一种退化形式。
 ## 1. 设计目标与边界
 
 GenTrip 是 **单 Agent、推荐优先** 的本地出行规划系统：
 
-- **一个 LangGraph Agent** 负责 Plan Run：**约束提取 → POI 检索 → 多候选路线 → 校验 → 评估 → Top-K 输出**；优先 **RouteBundle 热路径**，miss 时走冷路径全量流水线。
+- **一个 LangGraph Agent** 负责 Plan Run：**约束提取 → 地点解析 → POI 检索 → 多候选路线 → 校验 → 评估 → Top-K 输出**；P1 先稳定 GeoScope 冷路径，P2 再接入 RouteBundle 热路径。
 - 用户输入 **任意模糊问题**（如「附近有什么好玩的」「徐汇逛吃」），系统 **必须直接给出可执行路线**，不向用户追问预算、时长、人数。
 - 用户往往 **不知道自己具体要什么**——系统的职责是 **主动推荐**，而不是收集完整表单后再规划。
 - 路线输出后，用户可通过自然语言 **修订**（换店、跳过、加站）；Agent 在已有上下文上增量 Replan，而非每轮从零开始。
@@ -23,7 +28,7 @@ GenTrip 是 **单 Agent、推荐优先** 的本地出行规划系统：
 | **Always Plan** | 每条用户输入（除明显非出行意图）都触发一次 Plan 或 Replan Run，并产出路线 |
 | **Assumption First** | 推断出的默认值、画像补全、场景模板必须写入 `assumptions[]`，对用户可见 |
 | **Recommend, Don't Ask** | 约束冲突时不追问，而是自动放宽或返回 **Top-K 条评估最高的路线** |
-| **Hot First** | 线下 RouteBundle + 向量检索命中则跳过最耗时的生成/全量评估 |
+| **Geo First, Hot Later** | P1 先用 GeoScope 稳定地点解析与 POI 召回；P2 再用线下 RouteBundle 跳过全量生成/评估 |
 | **Single Agent** | 一个 StateGraph + 一份 GraphState；节点是流水线步骤，不是多个独立 Agent |
 
 ### 1.2 Agent 运行时模式（仅两种主模式）

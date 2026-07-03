@@ -1,5 +1,6 @@
 """category_taxonomy 单元测试。"""
 
+from src.models.constraints import IntentDomain
 from src.services.category_taxonomy import (
     compute_final_leaves,
     expand_cuisines,
@@ -27,9 +28,8 @@ def test_expand_leaf():
 
 def test_compute_final_leaves_dining_without_preferred():
     leaves = compute_final_leaves(
-        purpose="DINING",
+        domains=[IntentDomain.DINING.value],
         preferred_cuisines=None,
-        activity_tags=None,
     )
     assert "本帮菜" in leaves
     assert "博物馆" not in leaves
@@ -37,9 +37,8 @@ def test_compute_final_leaves_dining_without_preferred():
 
 def test_compute_final_leaves_chinese():
     leaves = compute_final_leaves(
-        purpose="DINING",
+        domains=[IntentDomain.DINING.value],
         preferred_cuisines=["中餐"],
-        activity_tags=None,
     )
     assert leaves == {"本帮菜", "火锅", "小吃快餐", "川菜", "粤菜", "烧烤"}
 
