@@ -52,4 +52,6 @@ tests/test_health.py
 tests/test_initial_state.py
 tests/test_plan_cold_path.py
 tests/test_poi_retrieval.py
+tests/test_route_generate.py
+tests/test_route_validate.py
 tests/test_taxonomy_samples.py
