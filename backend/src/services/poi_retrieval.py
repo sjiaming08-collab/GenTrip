@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -18,6 +19,9 @@ from ..models.retrieval import (
 )
 from ..models.route import ScoredPoi
 from .category_taxonomy import (
+    all_retrieval_leaves,
+    load_taxonomy,
+    normalize_cuisine_term,
     resolve_domain_leaves,
     widen_categories_to_parent_groups,
 )
@@ -35,8 +39,18 @@ POIS_PATH = FIXTURES_DIR / "pois.json"
 class _DomainRelaxStep:
     name: str
     categories: list[str] | None
-    district: str | None
     budget_per_person: int | None
+    assumption: Assumption | None = None
+
+
+@dataclass
+class _GeoRelaxStep:
+    name: str
+    district: str | None = None
+    business_area: str | None = None
+    center_lat: float | None = None
+    center_lng: float | None = None
+    radius_m: int | None = None
     assumption: Assumption | None = None
 
 
@@ -55,14 +69,81 @@ def parse_district(address: str, districts: list[str]) -> str:
     return ""
 
 
+def _poi_id(poi: dict) -> str:
+    raw = poi.get("openshopid") or poi.get("poi_id") or poi.get("id")
+    if raw:
+        return str(raw)
+    lat, lng = _poi_lat_lng(poi)
+    return f"{poi.get('name', 'poi')}:{lat}:{lng}"
+
+
+def _poi_district(poi: dict) -> str:
+    return poi.get("district") or parse_district(poi.get("address", ""), DISTRICTS)
+
+
+def _poi_business_area(poi: dict) -> str:
+    return poi.get("business_area") or ""
+
+
+def _poi_lat_lng(poi: dict) -> tuple[float, float]:
+    location = poi.get("location") or {}
+    lat = poi.get("latitude", location.get("lat"))
+    lng = poi.get("longitude", location.get("lng"))
+    return float(lat or 0), float(lng or 0)
+
+
+def _poi_rating(poi: dict) -> float:
+    return float(poi.get("star") or poi.get("rating") or 4.0)
+
+
+def _poi_price(poi: dict) -> int:
+    return int(poi.get("avgprice") or poi.get("avg_price") or 0)
+
+
+def _taxonomy_aliases() -> dict[str, str]:
+    return load_taxonomy().get("aliases") or {}
+
+
+def _category_from_text(raw: str) -> str:
+    text = (raw or "").strip()
+    if not text:
+        return "其他"
+
+    normalized = normalize_cuisine_term(text)
+    if normalized in all_retrieval_leaves():
+        return normalized
+
+    for alias, target in sorted(_taxonomy_aliases().items(), key=lambda item: len(item[0]), reverse=True):
+        if alias and alias in text:
+            return target
+
+    if any(word in text for word in ("美术馆", "展览", "艺术馆")):
+        return "博物馆"
+    if "公园" in text:
+        return "公园"
+    if any(word in text for word in ("商场", "购物", "百货", "买手店")):
+        return "购物"
+    if any(word in text for word in ("景点", "观光", "地标")):
+        return "观光"
+
+    return text
+
+
 def poi_primary_category(poi: dict) -> str:
+    raw_categories: list[str] = []
     categories = poi.get("categories") or []
-    return categories[0] if categories else "其他"
+    if isinstance(categories, list):
+        raw_categories.extend(str(item) for item in categories if item)
+    if poi.get("sub_category"):
+        raw_categories.insert(0, str(poi["sub_category"]))
+    if poi.get("category"):
+        raw_categories.append(str(poi["category"]))
+    return _category_from_text(raw_categories[0]) if raw_categories else "其他"
 
 
 def display_name(poi: dict) -> str:
     name = poi["name"]
-    branch = (poi.get("branch_name") or "").strip()
+    branch = (poi.get("branch_name") or poi.get("branch") or "").strip()
     if branch:
         return f"{name}（{branch}）"
     return name
@@ -75,16 +156,16 @@ def to_scored_poi(
     dimension: IntentDomain,
 ) -> ScoredPoi:
     category = poi_primary_category(poi)
-    address = poi.get("address") or ""
+    lat, lng = _poi_lat_lng(poi)
     return ScoredPoi(
-        poi_id=f"dp:{poi['openshopid']}",
+        poi_id=f"dp:{_poi_id(poi)}",
         name=display_name(poi),
         category=category,
-        district=parse_district(address, DISTRICTS),
-        lat=float(poi["latitude"]),
-        lng=float(poi["longitude"]),
-        rating=float(poi.get("star") or 4.0),
-        price_per_person=int(poi.get("avgprice") or 0),
+        district=_poi_district(poi),
+        lat=lat,
+        lng=lng,
+        rating=_poi_rating(poi),
+        price_per_person=_poi_price(poi),
         composite_score=max(0.0, 1.0 - rank_index * 0.05),
         dimension=dimension.value,
     )
@@ -94,12 +175,18 @@ def to_scored_poi(
 def _load_pois() -> tuple[float, list[dict]]:
     mtime = os.path.getmtime(POIS_PATH)
     with POIS_PATH.open(encoding="utf-8") as f:
-        return mtime, json.load(f)
+        data = json.load(f)
+    if isinstance(data, dict):
+        return mtime, data.get("pois") or []
+    return mtime, data
 
 
 def _online_pois() -> list[dict]:
     _, pois = _load_pois()
-    return [p for p in pois if p.get("openstatus") == 1]
+    return [
+        p for p in pois
+        if p.get("openstatus", 1) == 1 and p.get("status", "online") != "closed"
+    ]
 
 
 @lru_cache
@@ -118,28 +205,55 @@ def get_category_index() -> dict[str, list[dict]]:
 
 def invalidate_index_cache() -> None:
     _build_category_index.cache_clear()
+    _load_pois.cache_clear()
 
 
 def _matches_budget(poi: dict, budget_per_person: int | None) -> bool:
     if budget_per_person is None:
         return True
-    price = int(poi.get("avgprice") or 0)
+    price = _poi_price(poi)
     if price == 0:
         return True
     return price <= int(budget_per_person * 1.2)
 
 
+def _distance_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    radius = 6371000.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lng2 - lng1)
+    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    return 2 * radius * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def _matches_business_area(poi: dict, business_area: str) -> bool:
+    area = _poi_business_area(poi)
+    if not area:
+        return False
+    return area == business_area or area in business_area or business_area in area
+
+
+def _matches_geo(poi: dict, geo: _GeoRelaxStep) -> bool:
+    if geo.business_area:
+        return _matches_business_area(poi, geo.business_area)
+    if geo.center_lat is not None and geo.center_lng is not None and geo.radius_m:
+        lat, lng = _poi_lat_lng(poi)
+        if lat == 0 or lng == 0:
+            return False
+        return _distance_m(geo.center_lat, geo.center_lng, lat, lng) <= geo.radius_m
+    if geo.district:
+        return _poi_district(poi) == geo.district
+    return True
+
+
 def _filter_pool(
     pois: list[dict],
     *,
-    district: str | None,
+    geo: _GeoRelaxStep,
     budget_per_person: int | None,
 ) -> list[dict]:
-    result = pois
-    if district:
-        result = [
-            p for p in result if parse_district(p.get("address", ""), DISTRICTS) == district
-        ]
+    result = [p for p in pois if _matches_geo(p, geo)]
     if budget_per_person is not None:
         result = [p for p in result if _matches_budget(p, budget_per_person)]
     return result
@@ -151,7 +265,7 @@ def _collect_by_leaves(final_leaves: set[str]) -> list[dict]:
     collected: list[dict] = []
     for leaf in final_leaves:
         for poi in index.get(leaf, []):
-            poi_id = poi["openshopid"]
+            poi_id = _poi_id(poi)
             if poi_id in seen:
                 continue
             seen.add(poi_id)
@@ -173,14 +287,83 @@ def _match_poi_names(poi_names: list[str]) -> list[dict]:
     return matched
 
 
-def _sort_pois(pois: list[dict]) -> list[dict]:
-    return sorted(pois, key=lambda p: float(p.get("star") or 0), reverse=True)
+def _sort_pois(pois: list[dict], geo: _GeoRelaxStep | None = None) -> list[dict]:
+    if geo and geo.center_lat is not None and geo.center_lng is not None:
+        return sorted(
+            pois,
+            key=lambda p: (
+                _distance_m(geo.center_lat or 0, geo.center_lng or 0, *_poi_lat_lng(p)),
+                -_poi_rating(p),
+            ),
+        )
+    return sorted(pois, key=lambda p: _poi_rating(p), reverse=True)
+
+
+def _geo_assumption(slot: str, value: str, message: str) -> Assumption:
+    return Assumption(
+        slot=slot,
+        assumed_value=value,
+        source="poi_retrieve",
+        message=message,
+    )
+
+
+def _build_geo_relax_plan(plan: RetrievalPlan) -> list[_GeoRelaxStep]:
+    filters = plan.filters
+    steps: list[_GeoRelaxStep] = []
+
+    if filters.business_area:
+        steps.append(_GeoRelaxStep("G0", business_area=filters.business_area))
+
+    if filters.center_lat is not None and filters.center_lng is not None and filters.radius_m:
+        name = "G0" if not steps else f"G{len(steps)}"
+        steps.append(
+            _GeoRelaxStep(
+                name,
+                center_lat=filters.center_lat,
+                center_lng=filters.center_lng,
+                radius_m=filters.radius_m,
+                assumption=None if name == "G0" else _geo_assumption(
+                    "geo_scope",
+                    "radius",
+                    "商圈候选不足，已扩大到周边半径检索",
+                ),
+            )
+        )
+
+    if filters.district:
+        name = "G0" if not steps else f"G{len(steps)}"
+        steps.append(
+            _GeoRelaxStep(
+                name,
+                district=filters.district,
+                assumption=None if name == "G0" else _geo_assumption(
+                    "geo_scope",
+                    filters.district,
+                    f"周边候选不足，已扩大到{filters.district}",
+                ),
+            )
+        )
+
+    if not steps:
+        return [_GeoRelaxStep("G0")]
+
+    steps.append(
+        _GeoRelaxStep(
+            f"G{len(steps)}",
+            assumption=_geo_assumption(
+                "geo_scope",
+                "citywide",
+                "当前范围候选较少，已扩展至全市",
+            ),
+        )
+    )
+    return steps
 
 
 def _build_domain_relax_plan(
     spec: DomainSpec,
     *,
-    district: str | None,
     budget_per_person: int | None,
 ) -> list[_DomainRelaxStep]:
     widened = widen_categories_to_parent_groups(spec.categories)
@@ -188,11 +371,10 @@ def _build_domain_relax_plan(
 
     if spec.domain == IntentDomain.DINING:
         steps.extend([
-            _DomainRelaxStep("R0", spec.categories, district, budget_per_person),
+            _DomainRelaxStep("R0", spec.categories, budget_per_person),
             _DomainRelaxStep(
                 "R1",
                 spec.categories,
-                district,
                 None,
                 Assumption(
                     slot="budget_per_person",
@@ -209,7 +391,6 @@ def _build_domain_relax_plan(
                 _DomainRelaxStep(
                     "R2",
                     widened,
-                    district,
                     None,
                     Assumption(
                         slot="categories",
@@ -219,129 +400,97 @@ def _build_domain_relax_plan(
                     ),
                 )
             )
-        steps.extend([
-            _DomainRelaxStep(
-                "R3",
-                None,
-                district,
-                None,
-                Assumption(
-                    slot="categories",
-                    assumed_value="cleared",
-                    source="poi_retrieve",
-                    message="饮食域已扩大至全部餐饮类目",
+        if spec.categories:
+            steps.append(
+                _DomainRelaxStep(
+                    "R3",
+                    None,
+                    None,
+                    Assumption(
+                        slot="categories",
+                        assumed_value="cleared",
+                        source="poi_retrieve",
+                        message="饮食域已扩大至全部餐饮类目",
+                    ),
                 )
-                if spec.categories
-                else None,
-            ),
-            _DomainRelaxStep(
-                "R4",
-                None,
-                None,
-                None,
-                Assumption(
-                    slot="district",
-                    assumed_value="citywide",
-                    source="poi_retrieve",
-                    message="饮食域本区候选较少，已扩展至全市",
-                )
-                if district
-                else None,
-            ),
-        ])
+            )
         return steps
 
     if spec.domain == IntentDomain.SIGHTSEEING:
-        return [
-            _DomainRelaxStep("R0", spec.categories, district, None),
-            _DomainRelaxStep(
-                "R1",
-                None,
-                district,
-                None,
-                Assumption(
-                    slot="categories",
-                    assumed_value="cleared",
-                    source="poi_retrieve",
-                    message="游玩域已扩大至全部游玩类目",
+        steps.append(_DomainRelaxStep("R0", spec.categories, None))
+        if spec.categories:
+            steps.append(
+                _DomainRelaxStep(
+                    "R1",
+                    None,
+                    None,
+                    Assumption(
+                        slot="categories",
+                        assumed_value="cleared",
+                        source="poi_retrieve",
+                        message="游玩域已扩大至全部游玩类目",
+                    ),
                 )
-                if spec.categories
-                else None,
-            ),
-            _DomainRelaxStep(
-                "R2",
-                None,
-                None,
-                None,
-                Assumption(
-                    slot="district",
-                    assumed_value="citywide",
-                    source="poi_retrieve",
-                    message="游玩域本区候选较少，已扩展至全市",
-                )
-                if district
-                else None,
-            ),
-        ]
-
-    return [
-        _DomainRelaxStep("R0", spec.categories, district, None),
-        _DomainRelaxStep(
-            "R1",
-            None,
-            None,
-            None,
-            Assumption(
-                slot="district",
-                assumed_value="citywide",
-                source="poi_retrieve",
-                message="购物域本区候选较少，已扩展至全市",
             )
-            if district
-            else None,
-        ),
-    ]
+        return steps
+
+    return [_DomainRelaxStep("R0", spec.categories, None)]
+
+
+def _combined_step_name(domain_step: _DomainRelaxStep, geo_step: _GeoRelaxStep) -> str:
+    if domain_step.name == "R0" and geo_step.name == "G0":
+        return "R0"
+    return f"{domain_step.name}-{geo_step.name}"
 
 
 def _retrieve_one_domain(
     spec: DomainSpec,
     *,
-    district: str | None,
-    budget_per_person: int | None,
+    plan: RetrievalPlan,
     limit: int,
 ) -> _DomainRetrieveOutcome:
+    geo_steps = _build_geo_relax_plan(plan)
+    initial_geo = geo_steps[0]
+    domain_steps = _build_domain_relax_plan(
+        spec,
+        budget_per_person=plan.filters.budget_per_person if spec.domain == IntentDomain.DINING else None,
+    )
+
     pinned = _match_poi_names(spec.poi_names)
     pinned = _filter_pool(
         pinned,
-        district=district,
-        budget_per_person=budget_per_person if spec.domain == IntentDomain.DINING else None,
+        geo=initial_geo,
+        budget_per_person=plan.filters.budget_per_person if spec.domain == IntentDomain.DINING else None,
     )
 
-    steps = _build_domain_relax_plan(
-        spec,
-        district=district,
-        budget_per_person=budget_per_person if spec.domain == IntentDomain.DINING else None,
-    )
     assumptions: list[Assumption] = []
     final_leaves: set[str] = set()
     filtered: list[dict] = []
-    used_step = steps[-1].name
+    used_step = _combined_step_name(domain_steps[-1], geo_steps[-1])
+    used_geo = geo_steps[-1]
 
-    for step in steps:
-        final_leaves = resolve_domain_leaves(spec.domain, step.categories)
+    for domain_step in domain_steps:
+        final_leaves = resolve_domain_leaves(spec.domain, domain_step.categories)
         pool = _collect_by_leaves(final_leaves)
-        filtered = _filter_pool(
-            pool,
-            district=step.district,
-            budget_per_person=step.budget_per_person,
-        )
-        if len(filtered) >= MIN_CANDIDATES or step is steps[-1]:
-            used_step = step.name
-            if step.assumption and step.name != "R0":
-                assumptions.append(step.assumption)
-            break
+        for geo_step in geo_steps:
+            filtered = _filter_pool(
+                pool,
+                geo=geo_step,
+                budget_per_person=domain_step.budget_per_person,
+            )
+            if len(filtered) >= MIN_CANDIDATES or (domain_step is domain_steps[-1] and geo_step is geo_steps[-1]):
+                used_step = _combined_step_name(domain_step, geo_step)
+                used_geo = geo_step
+                if domain_step.assumption and domain_step.name != "R0":
+                    assumptions.append(domain_step.assumption)
+                if geo_step.assumption and geo_step.name != "G0":
+                    assumptions.append(geo_step.assumption)
+                break
+        else:
+            continue
+        break
 
-    merged_pool = _sort_pois(_dedupe_poi_dicts(pinned + filtered))
+    merged_pool = _sort_pois(_dedupe_poi_dicts(pinned + filtered), geo=used_geo)
     scored = [
         to_scored_poi(poi, idx, dimension=spec.domain)
         for idx, poi in enumerate(merged_pool[:limit])
@@ -359,7 +508,7 @@ def _dedupe_poi_dicts(pois: list[dict]) -> list[dict]:
     seen: set[str] = set()
     result: list[dict] = []
     for poi in pois:
-        poi_id = poi["openshopid"]
+        poi_id = _poi_id(poi)
         if poi_id in seen:
             continue
         seen.add(poi_id)
@@ -380,8 +529,7 @@ def retrieve_by_plan(plan: RetrievalPlan, *, limit: int = MERGED_LIMIT) -> Retri
     for spec in plan.domains:
         outcome = _retrieve_one_domain(
             spec,
-            district=plan.filters.district,
-            budget_per_person=plan.filters.budget_per_person,
+            plan=plan,
             limit=per_domain_limit,
         )
         all_pois.extend(outcome.pois)

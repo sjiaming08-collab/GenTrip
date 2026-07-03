@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from src.models.constraints import TripPurpose
+from src.models.constraints import IntentDomain
 
 CHINESE_LEAVES = frozenset({"本帮菜", "火锅", "小吃快餐", "川菜", "粤菜", "烧烤"})
 DINING_LEAVES = CHINESE_LEAVES | frozenset({"西餐", "日料", "咖啡", "甜品", "酒吧"})
@@ -18,7 +18,7 @@ class TaxonomySampleCase:
     id: str
     description: str
     district: str | None
-    purpose: str | None
+    domains: list[str]
     preferred_cuisines: list[str] | None = None
     activity_tags: list[str] | None = None
     budget_per_person: int | None = None
@@ -36,7 +36,7 @@ TAXONOMY_SAMPLE_CASES: tuple[TaxonomySampleCase, ...] = (
         id="chinese_group",
         description="group 中餐 → 中餐叶子，排除外国餐/轻食/观光",
         district="徐汇区",
-        purpose=TripPurpose.DINING.value,
+        domains=[IntentDomain.DINING.value],
         preferred_cuisines=["中餐"],
         allowed_categories=CHINESE_LEAVES,
         forbidden_categories=frozenset({"西餐", "日料", "咖啡", "博物馆", "购物"}),
@@ -46,7 +46,7 @@ TAXONOMY_SAMPLE_CASES: tuple[TaxonomySampleCase, ...] = (
         id="benbang_leaf",
         description="leaf 本帮 → 仅本帮菜",
         district="徐汇区",
-        purpose=TripPurpose.DINING.value,
+        domains=[IntentDomain.DINING.value],
         preferred_cuisines=["本帮"],
         allowed_categories=frozenset({"本帮菜"}),
         forbidden_categories=frozenset({"小吃快餐", "咖啡", "西餐", "博物馆"}),
@@ -56,7 +56,7 @@ TAXONOMY_SAMPLE_CASES: tuple[TaxonomySampleCase, ...] = (
         id="alias_chinese_food",
         description="alias 中国菜 → 同中餐 group 展开",
         district="静安区",
-        purpose=TripPurpose.DINING.value,
+        domains=[IntentDomain.DINING.value],
         preferred_cuisines=["中国菜"],
         allowed_categories=CHINESE_LEAVES,
         forbidden_categories=frozenset({"西餐", "日料", "咖啡"}),
@@ -65,7 +65,7 @@ TAXONOMY_SAMPLE_CASES: tuple[TaxonomySampleCase, ...] = (
         id="japanese_leaf",
         description="leaf 日料 → 仅日料",
         district="静安区",
-        purpose=TripPurpose.DINING.value,
+        domains=[IntentDomain.DINING.value],
         preferred_cuisines=["日料"],
         allowed_categories=frozenset({"日料"}),
         forbidden_categories=frozenset({"本帮菜", "西餐", "博物馆"}),
@@ -74,45 +74,45 @@ TAXONOMY_SAMPLE_CASES: tuple[TaxonomySampleCase, ...] = (
         id="coffee_leaf",
         description="leaf 咖啡 → 仅咖啡",
         district="徐汇区",
-        purpose=TripPurpose.DINING.value,
+        domains=[IntentDomain.DINING.value],
         preferred_cuisines=["咖啡"],
         allowed_categories=frozenset({"咖啡"}),
         forbidden_categories=frozenset({"本帮菜", "酒吧", "博物馆"}),
     ),
     TaxonomySampleCase(
         id="sightseeing_museum",
-        description="purpose SIGHTSEEING → 仅观光类叶子",
+        description="domain SIGHTSEEING → 仅观光类叶子",
         district="徐汇区",
-        purpose=TripPurpose.SIGHTSEEING.value,
+        domains=[IntentDomain.SIGHTSEEING.value],
         allowed_categories=SIGHTSEEING_LEAVES,
         forbidden_categories=frozenset({"本帮菜", "咖啡", "西餐", "小吃快餐"}),
         allowed_relax_steps=frozenset({"R0"}),
     ),
     TaxonomySampleCase(
         id="sichuan_widen",
-        description="leaf 川菜无 POI → R2 扩到中餐 + assumption",
+        description="leaf 川菜候选不足 → 扩到中餐或全餐饮 + assumption",
         district="徐汇区",
-        purpose=TripPurpose.DINING.value,
+        domains=[IntentDomain.DINING.value],
         preferred_cuisines=["川菜"],
         allowed_categories=CHINESE_LEAVES,
         forbidden_categories=frozenset({"西餐", "日料", "咖啡"}),
-        allowed_relax_steps=frozenset({"R2", "R3", "R4", "R5"}),
-        require_assumption_slot="preferred_cuisines",
+        allowed_relax_steps=frozenset({"R2", "R2-G0", "R3", "R2-G1", "R3-G1"}),
+        require_assumption_slot="categories",
         require_assumption_message_contains="扩展",
     ),
     TaxonomySampleCase(
         id="dining_no_preferred",
         description="DINING 无 preferred → 全餐饮叶子，可比中餐更宽",
         district="徐汇区",
-        purpose=TripPurpose.DINING.value,
+        domains=[IntentDomain.DINING.value],
         allowed_categories=DINING_LEAVES,
         require_any_category_in=frozenset({"咖啡", "本帮菜"}),
     ),
     TaxonomySampleCase(
         id="mixed_guangchi",
-        description="MIXED + 逛吃 → 餐饮与观光并集",
+        description="多 domain + 逛吃 → 餐饮与观光并集",
         district="徐汇区",
-        purpose=TripPurpose.MIXED.value,
+        domains=[IntentDomain.DINING.value, IntentDomain.SIGHTSEEING.value],
         activity_tags=["逛吃"],
         require_any_category_in=frozenset({"本帮菜", "咖啡", "小吃快餐"}),
         forbidden_categories=frozenset(),
@@ -121,7 +121,7 @@ TAXONOMY_SAMPLE_CASES: tuple[TaxonomySampleCase, ...] = (
         id="western_leaf",
         description="leaf 西餐 → 仅西餐（与中餐互斥对照）",
         district="徐汇区",
-        purpose=TripPurpose.DINING.value,
+        domains=[IntentDomain.DINING.value],
         preferred_cuisines=["西餐"],
         allowed_categories=frozenset({"西餐"}),
         forbidden_categories=frozenset({"本帮菜", "小吃快餐", "日料"}),
@@ -142,13 +142,14 @@ class CaseResult:
 
 def run_sample_case(case: TaxonomySampleCase, *, limit: int = 10) -> CaseResult:
     from src.mocks.poi_store import retrieve_pois_with_meta
+    from src.services.poi_retrieval import invalidate_index_cache
 
+    invalidate_index_cache()
     result = retrieve_pois_with_meta(
         district=case.district,
         limit=limit,
-        purpose=case.purpose,
+        domains=case.domains,
         preferred_cuisines=case.preferred_cuisines,
-        activity_tags=case.activity_tags,
         budget_per_person=case.budget_per_person,
     )
 

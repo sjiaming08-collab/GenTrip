@@ -1,0 +1,636 @@
+{
+  "schema_version": "poi_seed.v1",
+  "city": "上海",
+  "data_policy": {
+    "source": "synthetic",
+    "note": "Demo data generated for GenTrip route planning. Names, reviews, scores, queue estimates and deals are synthetic; coordinates are plausible neighborhood anchors for testing route logic."
+  },
+  "generated_for": [
+    "POI retrieval",
+    "UGC grounded route explanations",
+    "route optimization",
+    "template matching",
+    "replan demos"
+  ],
+  "pois": [
+    {
+      "poi_id": "sh_xh_food_001",
+      "name": "梧桐里小馆",
+      "brand_type": "independent",
+      "category": "美食",
+      "sub_category": "本帮江浙菜",
+      "district": "徐汇区",
+      "business_area": "衡山路/复兴西路",
+      "address": "复兴西路近乌鲁木齐中路",
+      "location": { "lat": 31.20764, "lng": 121.44621 },
+      "avg_price": 126,
+      "rating": 4.7,
+      "taste_score": 4.8,
+      "environment_score": 4.6,
+      "service_score": 4.5,
+      "review_count": 1846,
+      "monthly_sales": 3200,
+      "popularity": 91,
+      "queue_minutes": { "weekday": 12, "weekend": 32, "rainy_day": 8 },
+      "opening_hours": [
+        { "days": "Mon-Sun", "open": "11:00", "close": "14:00" },
+        { "days": "Mon-Sun", "open": "17:00", "close": "21:30" }
+      ],
+      "recommended_duration_min": 75,
+      "reservation": "recommended",
+      "parking": "limited",
+      "tags": ["朋友聚餐", "长辈友好", "可预约", "口味稳定"],
+      "signature_items": ["葱油鸡", "响油鳝丝", "桂花酒酿圆子"],
+      "deals": [
+        { "deal_id": "deal_sh_xh_food_001_01", "title": "双人经典套餐", "price": 238, "original_price": 286, "available": true }
+      ],
+      "ugc_summary": "菜品偏经典本帮口味，甜咸平衡，环境安静，适合不赶时间的正餐。",
+      "review_snippets": [
+        { "sentiment": "positive", "text": "葱油鸡很嫩，调味不重，带父母来吃比较稳。" },
+        { "sentiment": "mixed", "text": "周末晚饭排队明显，最好提前约或者错峰。" }
+      ],
+      "constraints": {
+        "dietary": ["contains_meat", "contains_seafood"],
+        "scene_fit": ["family", "friends", "date"],
+        "noise_level": "medium_low"
+      }
+    },
+    {
+      "poi_id": "sh_xh_food_002",
+      "name": "南丹路砂锅局",
+      "brand_type": "local_chain",
+      "category": "美食",
+      "sub_category": "砂锅/煲仔",
+      "district": "徐汇区",
+      "business_area": "徐家汇",
+      "address": "南丹东路近漕溪北路",
+      "location": { "lat": 31.19202, "lng": 121.43875 },
+      "avg_price": 68,
+      "rating": 4.5,
+      "taste_score": 4.6,
+      "environment_score": 4.2,
+      "service_score": 4.3,
+      "review_count": 972,
+      "monthly_sales": 5100,
+      "popularity": 84,
+      "queue_minutes": { "weekday": 8, "weekend": 18, "rainy_day": 15 },
+      "opening_hours": [{ "days": "Mon-Sun", "open": "10:30", "close": "22:00" }],
+      "recommended_duration_min": 45,
+      "reservation": "not_required",
+      "parking": "mall_nearby",
+      "tags": ["性价比", "一人食", "出餐快", "热乎"],
+      "signature_items": ["腊味煲仔饭", "番茄牛腩砂锅", "腐竹肥牛煲"],
+      "deals": [
+        { "deal_id": "deal_sh_xh_food_002_01", "title": "单人砂锅饭套餐", "price": 49.9, "original_price": 63, "available": true }
+      ],
+      "ugc_summary": "适合预算有限或赶时间的热食，翻台快，口味偏家常。",
+      "review_snippets": [
+        { "sentiment": "positive", "text": "煲仔饭锅巴够脆，一个人吃刚好。" },
+        { "sentiment": "mixed", "text": "饭点座位紧，环境比较紧凑。" }
+      ],
+      "constraints": {
+        "dietary": ["contains_meat"],
+        "scene_fit": ["solo", "quick_meal", "student"],
+        "noise_level": "medium"
+      }
+    },
+    {
+      "poi_id": "sh_xh_food_003",
+      "name": "云岚米线馆",
+      "brand_type": "independent",
+      "category": "美食",
+      "sub_category": "云南菜/米线",
+      "district": "徐汇区",
+      "business_area": "田林/漕河泾",
+      "address": "田林路近桂林路",
+      "location": { "lat": 31.17487, "lng": 121.41466 },
+      "avg_price": 54,
+      "rating": 4.4,
+      "taste_score": 4.5,
+      "environment_score": 4.1,
+      "service_score": 4.3,
+      "review_count": 746,
+      "monthly_sales": 4600,
+      "popularity": 79,
+      "queue_minutes": { "weekday": 6, "weekend": 12, "rainy_day": 10 },
+      "opening_hours": [{ "days": "Mon-Sun", "open": "10:00", "close": "21:30" }],
+      "recommended_duration_min": 40,
+      "reservation": "not_required",
+      "parking": "limited",
+      "tags": ["酸辣", "一人食", "午餐", "轻正餐"],
+      "signature_items": ["番茄酸汤米线", "小锅米线", "玫瑰冰粉"],
+      "deals": [
+        { "deal_id": "deal_sh_xh_food_003_01", "title": "双人米线小吃套餐", "price": 98, "original_price": 121, "available": true }
+      ],
+      "ugc_summary": "酸汤口味突出，适合轻量正餐，预算友好。",
+      "review_snippets": [
+        { "sentiment": "positive", "text": "酸汤很开胃，配冰粉刚好。" },
+        { "sentiment": "mixed", "text": "辣度比标注略高，不吃辣要提前说。" }
+      ],
+      "constraints": {
+        "dietary": ["spicy", "contains_meat"],
+        "scene_fit": ["solo", "quick_meal", "friends"],
+        "noise_level": "medium"
+      }
+    },
+    {
+      "poi_id": "sh_xh_food_004",
+      "name": "衡复小笼点心铺",
+      "brand_type": "independent",
+      "category": "美食",
+      "sub_category": "小吃快餐",
+      "district": "徐汇区",
+      "business_area": "衡山路/复兴西路",
+      "address": "高安路近建国西路",
+      "location": { "lat": 31.20362, "lng": 121.44257 },
+      "avg_price": 39,
+      "rating": 4.3,
+      "taste_score": 4.4,
+      "environment_score": 3.9,
+      "service_score": 4.1,
+      "review_count": 1210,
+      "monthly_sales": 7800,
+      "popularity": 82,
+      "queue_minutes": { "weekday": 10, "weekend": 24, "rainy_day": 7 },
+      "opening_hours": [{ "days": "Mon-Sun", "open": "07:00", "close": "20:30" }],
+      "recommended_duration_min": 30,
+      "reservation": "not_supported",
+      "parking": "none",
+      "tags": ["早餐", "老上海", "平价", "可打包"],
+      "signature_items": ["鲜肉小笼", "虾仁馄饨", "葱油拌面"],
+      "deals": [
+        { "deal_id": "deal_sh_xh_food_004_01", "title": "单人早餐组合", "price": 26.8, "original_price": 34, "available": true }
+      ],
+      "ugc_summary": "适合早餐或路线中快速补给，环境普通但出品稳定。",
+      "review_snippets": [
+        { "sentiment": "positive", "text": "小笼汤汁多，早上来很有烟火气。" },
+        { "sentiment": "mixed", "text": "堂食位置少，建议避开早高峰。" }
+      ],
+      "constraints": {
+        "dietary": ["contains_meat"],
+        "scene_fit": ["breakfast", "quick_meal", "budget"],
+        "noise_level": "medium_high"
+      }
+    },
+    {
+      "poi_id": "sh_xh_cafe_001",
+      "name": "余庆路烘焙咖啡",
+      "brand_type": "independent",
+      "category": "美食",
+      "sub_category": "咖啡厅",
+      "district": "徐汇区",
+      "business_area": "衡山路/复兴西路",
+      "address": "余庆路近衡山路",
+      "location": { "lat": 31.20538, "lng": 121.44978 },
+      "avg_price": 58,
+      "rating": 4.6,
+      "taste_score": 4.5,
+      "environment_score": 4.8,
+      "service_score": 4.5,
+      "review_count": 1554,
+      "monthly_sales": 2900,
+      "popularity": 88,
+      "queue_minutes": { "weekday": 5, "weekend": 20, "rainy_day": 6 },
+      "opening_hours": [{ "days": "Mon-Sun", "open": "09:00", "close": "19:30" }],
+      "recommended_duration_min": 50,
+      "reservation": "not_required",
+      "parking": "limited",
+      "tags": ["下午茶", "拍照", "安静", "可办公"],
+      "signature_items": ["桂花拿铁", "海盐可颂", "开心果巴斯克"],
+      "deals": [
+        { "deal_id": "deal_sh_xh_cafe_001_01", "title": "咖啡甜点双人券", "price": 88, "original_price": 112, "available": true }
+      ],
+      "ugc_summary": "环境和甜点评价较好，适合在步行路线中安排休息。",
+      "review_snippets": [
+        { "sentiment": "positive", "text": "窗边位置舒服，甜点不会太甜。" },
+        { "sentiment": "mixed", "text": "周末热门时段拍照的人多，安静程度会下降。" }
+      ],
+      "constraints": {
+        "dietary": ["vegetarian_options"],
+        "scene_fit": ["date", "coffee_break", "work"],
+        "noise_level": "low"
+      }
+    },
+    {
+      "poi_id": "sh_xh_leisure_001",
+      "name": "安福路小剧场",
+      "brand_type": "independent",
+      "category": "休闲娱乐",
+      "sub_category": "剧场/演出",
+      "district": "徐汇区",
+      "business_area": "安福路/武康路",
+      "address": "安福路近武康路",
+      "location": { "lat": 31.21319, "lng": 121.44246 },
+      "avg_price": 168,
+      "rating": 4.6,
+      "taste_score": null,
+      "environment_score": 4.7,
+      "service_score": 4.5,
+      "review_count": 638,
+      "monthly_sales": 1200,
+      "popularity": 86,
+      "queue_minutes": { "weekday": 5, "weekend": 15, "rainy_day": 5 },
+      "opening_hours": [
+        { "days": "Tue-Sun", "open": "13:00", "close": "22:00" }
+      ],
+      "recommended_duration_min": 120,
+      "reservation": "required",
+      "parking": "limited",
+      "tags": ["文艺", "需预约", "情侣", "雨天友好"],
+      "signature_items": ["沉浸式小剧场", "周末下午场"],
+      "deals": [
+        { "deal_id": "deal_sh_xh_leisure_001_01", "title": "工作日单人票", "price": 128, "original_price": 168, "available": true }
+      ],
+      "ugc_summary": "适合文艺路线或雨天备选，时间占用较长，需提前确认场次。",
+      "review_snippets": [
+        { "sentiment": "positive", "text": "空间小但氛围近，演员互动感强。" },
+        { "sentiment": "mixed", "text": "座位不多，临时去可能没有合适场次。" }
+      ],
+      "constraints": {
+        "scene_fit": ["date", "culture", "rainy_day"],
+        "noise_level": "medium"
+      }
+    },
+    {
+      "poi_id": "sh_xh_sight_001",
+      "name": "武康路街区漫步点",
+      "brand_type": "public_space",
+      "category": "景点",
+      "sub_category": "城市街区",
+      "district": "徐汇区",
+      "business_area": "安福路/武康路",
+      "address": "武康路近湖南路",
+      "location": { "lat": 31.21378, "lng": 121.43684 },
+      "avg_price": 0,
+      "rating": 4.7,
+      "taste_score": null,
+      "environment_score": 4.8,
+      "service_score": null,
+      "review_count": 4210,
+      "monthly_sales": 0,
+      "popularity": 94,
+      "queue_minutes": { "weekday": 0, "weekend": 8, "rainy_day": 0 },
+      "opening_hours": [{ "days": "Mon-Sun", "open": "00:00", "close": "23:59" }],
+      "recommended_duration_min": 60,
+      "reservation": "not_required",
+      "parking": "limited",
+      "tags": ["citywalk", "免费", "拍照", "历史建筑"],
+      "signature_items": ["街区漫步", "建筑外观拍照"],
+      "deals": [],
+      "ugc_summary": "适合串联咖啡、甜品和街区漫步，免费但周末人流较大。",
+      "review_snippets": [
+        { "sentiment": "positive", "text": "适合慢慢走，沿路小店很多。" },
+        { "sentiment": "mixed", "text": "热门转角周末拍照排队，体验会被人流影响。" }
+      ],
+      "constraints": {
+        "scene_fit": ["citywalk", "budget", "photo"],
+        "noise_level": "outdoor"
+      }
+    },
+    {
+      "poi_id": "sh_ja_food_001",
+      "name": "胶州路炭火烧鸟",
+      "brand_type": "independent",
+      "category": "美食",
+      "sub_category": "日料/烧鸟",
+      "district": "静安区",
+      "business_area": "静安寺",
+      "address": "胶州路近愚园路",
+      "location": { "lat": 31.22595, "lng": 121.44327 },
+      "avg_price": 189,
+      "rating": 4.6,
+      "taste_score": 4.7,
+      "environment_score": 4.4,
+      "service_score": 4.5,
+      "review_count": 1308,
+      "monthly_sales": 2100,
+      "popularity": 89,
+      "queue_minutes": { "weekday": 18, "weekend": 38, "rainy_day": 14 },
+      "opening_hours": [{ "days": "Mon-Sun", "open": "17:30", "close": "23:30" }],
+      "recommended_duration_min": 90,
+      "reservation": "required",
+      "parking": "paid_nearby",
+      "tags": ["夜宵", "约会", "小酌", "需预约"],
+      "signature_items": ["鸡腿葱串", "明太子山药", "炭烤饭团"],
+      "deals": [
+        { "deal_id": "deal_sh_ja_food_001_01", "title": "双人烧鸟套餐", "price": 338, "original_price": 398, "available": true }
+      ],
+      "ugc_summary": "晚餐和夜宵场景强，预算较高，适合把它作为路线收尾。",
+      "review_snippets": [
+        { "sentiment": "positive", "text": "火候稳定，串类不会干，小酌氛围好。" },
+        { "sentiment": "mixed", "text": "吧台位紧凑，临时到店等待时间不短。" }
+      ],
+      "constraints": {
+        "dietary": ["contains_meat", "alcohol"],
+        "scene_fit": ["date", "night", "friends"],
+        "noise_level": "medium"
+      }
+    },
+    {
+      "poi_id": "sh_ja_food_002",
+      "name": "愚园路泰味小馆",
+      "brand_type": "independent",
+      "category": "美食",
+      "sub_category": "东南亚菜",
+      "district": "静安区",
+      "business_area": "静安寺",
+      "address": "愚园路近常德路",
+      "location": { "lat": 31.22678, "lng": 121.44796 },
+      "avg_price": 112,
+      "rating": 4.5,
+      "taste_score": 4.6,
+      "environment_score": 4.3,
+      "service_score": 4.4,
+      "review_count": 1042,
+      "monthly_sales": 3600,
+      "popularity": 85,
+      "queue_minutes": { "weekday": 10, "weekend": 26, "rainy_day": 8 },
+      "opening_hours": [{ "days": "Mon-Sun", "open": "11:00", "close": "22:00" }],
+      "recommended_duration_min": 70,
+      "reservation": "recommended",
+      "parking": "paid_nearby",
+      "tags": ["酸辣", "朋友聚餐", "可预约", "下饭"],
+      "signature_items": ["冬阴功汤", "青柠蒸鲈鱼", "芒果糯米饭"],
+      "deals": [
+        { "deal_id": "deal_sh_ja_food_002_01", "title": "双人泰式套餐", "price": 218, "original_price": 266, "available": true }
+      ],
+      "ugc_summary": "菜式开胃，适合朋友聚餐，辣度和香料接受度需要确认。",
+      "review_snippets": [
+        { "sentiment": "positive", "text": "冬阴功酸辣够味，米饭很搭。" },
+        { "sentiment": "mixed", "text": "香料味明显，不习惯的人可能觉得重。" }
+      ],
+      "constraints": {
+        "dietary": ["spicy", "contains_seafood"],
+        "scene_fit": ["friends", "date"],
+        "noise_level": "medium"
+      }
+    },
+    {
+      "poi_id": "sh_ja_cafe_001",
+      "name": "常德路手冲实验室",
+      "brand_type": "independent",
+      "category": "美食",
+      "sub_category": "咖啡厅",
+      "district": "静安区",
+      "business_area": "静安寺",
+      "address": "常德路近南京西路",
+      "location": { "lat": 31.22748, "lng": 121.45287 },
+      "avg_price": 64,
+      "rating": 4.6,
+      "taste_score": 4.7,
+      "environment_score": 4.5,
+      "service_score": 4.6,
+      "review_count": 866,
+      "monthly_sales": 1800,
+      "popularity": 82,
+      "queue_minutes": { "weekday": 4, "weekend": 16, "rainy_day": 5 },
+      "opening_hours": [{ "days": "Mon-Sun", "open": "08:30", "close": "20:00" }],
+      "recommended_duration_min": 45,
+      "reservation": "not_required",
+      "parking": "paid_nearby",
+      "tags": ["手冲", "可办公", "安静", "精品咖啡"],
+      "signature_items": ["埃塞手冲", "燕麦冷萃", "柠檬磅蛋糕"],
+      "deals": [
+        { "deal_id": "deal_sh_ja_cafe_001_01", "title": "手冲咖啡体验券", "price": 52, "original_price": 68, "available": true }
+      ],
+      "ugc_summary": "咖啡专业度高，适合短暂停留或作为静安寺路线的中段休息。",
+      "review_snippets": [
+        { "sentiment": "positive", "text": "豆单选择多，店员会按口味推荐。" },
+        { "sentiment": "mixed", "text": "甜品选择少，主要还是喝咖啡。" }
+      ],
+      "constraints": {
+        "dietary": ["vegetarian_options"],
+        "scene_fit": ["coffee_break", "work", "solo"],
+        "noise_level": "low"
+      }
+    },
+    {
+      "poi_id": "sh_hp_food_001",
+      "name": "云南南路鲜味面馆",
+      "brand_type": "local_chain",
+      "category": "美食",
+      "sub_category": "面馆",
+      "district": "黄浦区",
+      "business_area": "人民广场",
+      "address": "云南南路近延安东路",
+      "location": { "lat": 31.22978, "lng": 121.48294 },
+      "avg_price": 48,
+      "rating": 4.4,
+      "taste_score": 4.5,
+      "environment_score": 4.0,
+      "service_score": 4.2,
+      "review_count": 2204,
+      "monthly_sales": 9600,
+      "popularity": 87,
+      "queue_minutes": { "weekday": 12, "weekend": 28, "rainy_day": 10 },
+      "opening_hours": [{ "days": "Mon-Sun", "open": "07:30", "close": "21:00" }],
+      "recommended_duration_min": 35,
+      "reservation": "not_supported",
+      "parking": "none",
+      "tags": ["老字号风格", "快餐", "游客友好", "平价"],
+      "signature_items": ["黄鱼煨面", "辣肉面", "炸猪排"],
+      "deals": [
+        { "deal_id": "deal_sh_hp_food_001_01", "title": "招牌面单人餐", "price": 42.8, "original_price": 53, "available": true }
+      ],
+      "ugc_summary": "位置适合人民广场周边快速用餐，性价比高但用餐环境偏快节奏。",
+      "review_snippets": [
+        { "sentiment": "positive", "text": "黄鱼面汤头鲜，作为路过午餐很合适。" },
+        { "sentiment": "mixed", "text": "游客多的时候会排队，翻台快但不适合久坐。" }
+      ],
+      "constraints": {
+        "dietary": ["contains_meat", "contains_seafood"],
+        "scene_fit": ["quick_meal", "tourist", "budget"],
+        "noise_level": "medium_high"
+      }
+    },
+    {
+      "poi_id": "sh_hp_sight_001",
+      "name": "外滩夜景观景点",
+      "brand_type": "public_space",
+      "category": "景点",
+      "sub_category": "城市地标",
+      "district": "黄浦区",
+      "business_area": "外滩",
+      "address": "中山东一路近南京东路",
+      "location": { "lat": 31.23965, "lng": 121.49079 },
+      "avg_price": 0,
+      "rating": 4.8,
+      "taste_score": null,
+      "environment_score": 4.8,
+      "service_score": null,
+      "review_count": 12840,
+      "monthly_sales": 0,
+      "popularity": 98,
+      "queue_minutes": { "weekday": 0, "weekend": 12, "rainy_day": 0 },
+      "opening_hours": [{ "days": "Mon-Sun", "open": "00:00", "close": "23:59" }],
+      "recommended_duration_min": 50,
+      "reservation": "not_required",
+      "parking": "limited",
+      "tags": ["夜景", "免费", "游客必到", "拍照"],
+      "signature_items": ["江景漫步", "夜景拍照"],
+      "deals": [],
+      "ugc_summary": "适合夜间收尾和拍照，但周末人流密集，雨天体验下降。",
+      "review_snippets": [
+        { "sentiment": "positive", "text": "晚上灯亮以后很适合作为路线终点。" },
+        { "sentiment": "mixed", "text": "节假日人非常多，拍照要预留时间。" }
+      ],
+      "constraints": {
+        "scene_fit": ["night", "tourist", "photo", "budget"],
+        "noise_level": "outdoor"
+      }
+    },
+    {
+      "poi_id": "sh_cn_food_001",
+      "name": "新华路轻食厨房",
+      "brand_type": "independent",
+      "category": "美食",
+      "sub_category": "轻食/健康餐",
+      "district": "长宁区",
+      "business_area": "新华路",
+      "address": "新华路近番禺路",
+      "location": { "lat": 31.20793, "lng": 121.42455 },
+      "avg_price": 72,
+      "rating": 4.5,
+      "taste_score": 4.4,
+      "environment_score": 4.6,
+      "service_score": 4.5,
+      "review_count": 684,
+      "monthly_sales": 2400,
+      "popularity": 76,
+      "queue_minutes": { "weekday": 4, "weekend": 10, "rainy_day": 3 },
+      "opening_hours": [{ "days": "Mon-Sun", "open": "10:00", "close": "20:30" }],
+      "recommended_duration_min": 45,
+      "reservation": "not_required",
+      "parking": "limited",
+      "tags": ["低脂", "素食友好", "安静", "轻负担"],
+      "signature_items": ["牛油果鸡胸碗", "藜麦南瓜沙拉", "无糖酸奶杯"],
+      "deals": [
+        { "deal_id": "deal_sh_cn_food_001_01", "title": "轻食单人餐", "price": 59.9, "original_price": 78, "available": true }
+      ],
+      "ugc_summary": "适合健康饮食或下午轻餐，路线中不会占用太长时间。",
+      "review_snippets": [
+        { "sentiment": "positive", "text": "食材新鲜，吃完没有负担。" },
+        { "sentiment": "mixed", "text": "口味偏清淡，重口味用户可能觉得淡。" }
+      ],
+      "constraints": {
+        "dietary": ["vegetarian_options", "low_fat"],
+        "scene_fit": ["solo", "healthy", "work"],
+        "noise_level": "low"
+      }
+    },
+    {
+      "poi_id": "sh_cn_cafe_001",
+      "name": "番禺路花园咖啡",
+      "brand_type": "independent",
+      "category": "美食",
+      "sub_category": "咖啡厅",
+      "district": "长宁区",
+      "business_area": "新华路",
+      "address": "番禺路近新华路",
+      "location": { "lat": 31.20492, "lng": 121.42172 },
+      "avg_price": 62,
+      "rating": 4.6,
+      "taste_score": 4.4,
+      "environment_score": 4.9,
+      "service_score": 4.5,
+      "review_count": 1106,
+      "monthly_sales": 2100,
+      "popularity": 83,
+      "queue_minutes": { "weekday": 3, "weekend": 18, "rainy_day": 4 },
+      "opening_hours": [{ "days": "Mon-Sun", "open": "09:30", "close": "20:00" }],
+      "recommended_duration_min": 60,
+      "reservation": "not_required",
+      "parking": "limited",
+      "tags": ["花园露台", "下午茶", "拍照", "宠物友好"],
+      "signature_items": ["橙花拿铁", "伯爵茶戚风", "莓果气泡水"],
+      "deals": [
+        { "deal_id": "deal_sh_cn_cafe_001_01", "title": "下午茶双人券", "price": 108, "original_price": 138, "available": true }
+      ],
+      "ugc_summary": "环境是主要亮点，适合 citywalk 休息和拍照。",
+      "review_snippets": [
+        { "sentiment": "positive", "text": "露台很舒服，下午光线好。" },
+        { "sentiment": "mixed", "text": "下雨天室内座位有限，体验会打折。" }
+      ],
+      "constraints": {
+        "dietary": ["vegetarian_options"],
+        "scene_fit": ["date", "photo", "coffee_break", "pet_friendly"],
+        "noise_level": "low"
+      }
+    },
+    {
+      "poi_id": "sh_pd_food_001",
+      "name": "陆家嘴云端简餐",
+      "brand_type": "local_chain",
+      "category": "美食",
+      "sub_category": "西餐/简餐",
+      "district": "浦东新区",
+      "business_area": "陆家嘴",
+      "address": "陆家嘴环路近银城中路",
+      "location": { "lat": 31.23672, "lng": 121.50383 },
+      "avg_price": 118,
+      "rating": 4.4,
+      "taste_score": 4.3,
+      "environment_score": 4.8,
+      "service_score": 4.4,
+      "review_count": 756,
+      "monthly_sales": 1600,
+      "popularity": 80,
+      "queue_minutes": { "weekday": 14, "weekend": 22, "rainy_day": 9 },
+      "opening_hours": [{ "days": "Mon-Sun", "open": "10:30", "close": "21:30" }],
+      "recommended_duration_min": 70,
+      "reservation": "recommended",
+      "parking": "mall_nearby",
+      "tags": ["景观位", "商务", "情侣", "商场内"],
+      "signature_items": ["香煎鸡腿排", "蘑菇奶油意面", "凯撒沙拉"],
+      "deals": [
+        { "deal_id": "deal_sh_pd_food_001_01", "title": "景观双人简餐", "price": 198, "original_price": 248, "available": true }
+      ],
+      "ugc_summary": "景观和位置优先，适合陆家嘴观光路线中安排正餐。",
+      "review_snippets": [
+        { "sentiment": "positive", "text": "窗边视野不错，带外地朋友比较合适。" },
+        { "sentiment": "mixed", "text": "菜品中规中矩，主要胜在位置和环境。" }
+      ],
+      "constraints": {
+        "dietary": ["contains_meat", "vegetarian_options"],
+        "scene_fit": ["business", "tourist", "date"],
+        "noise_level": "medium"
+      }
+    },
+    {
+      "poi_id": "sh_pd_sight_001",
+      "name": "滨江大道观景步道",
+      "brand_type": "public_space",
+      "category": "景点",
+      "sub_category": "滨江步道",
+      "district": "浦东新区",
+      "business_area": "陆家嘴",
+      "address": "滨江大道近东昌路",
+      "location": { "lat": 31.24138, "lng": 121.50324 },
+      "avg_price": 0,
+      "rating": 4.7,
+      "taste_score": null,
+      "environment_score": 4.8,
+      "service_score": null,
+      "review_count": 5260,
+      "monthly_sales": 0,
+      "popularity": 93,
+      "queue_minutes": { "weekday": 0, "weekend": 6, "rainy_day": 0 },
+      "opening_hours": [{ "days": "Mon-Sun", "open": "00:00", "close": "23:59" }],
+      "recommended_duration_min": 45,
+      "reservation": "not_required",
+      "parking": "paid_nearby",
+      "tags": ["江景", "免费", "夜景", "散步"],
+      "signature_items": ["滨江散步", "陆家嘴夜景"],
+      "deals": [],
+      "ugc_summary": "适合和陆家嘴商圈餐饮串联，夜景价值高。",
+      "review_snippets": [
+        { "sentiment": "positive", "text": "晚上风景好，饭后散步很舒服。" },
+        { "sentiment": "mixed", "text": "风大时体感偏冷，冬天要注意。" }
+      ],
+      "constraints": {
+        "scene_fit": ["night", "walk", "budget", "tourist"],
+        "noise_level": "outdoor"
+      }
+    }
+  ]
+}
