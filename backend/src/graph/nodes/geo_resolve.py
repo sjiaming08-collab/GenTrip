@@ -14,8 +14,14 @@ async def geo_resolve(state: GraphState) -> dict:
 
     update = phase_update(
         "geo_resolve",
+        summary=f"scope={scope.scope_type}:{scope.resolved_name}",
         geo_scope=scope.model_dump(mode="json"),
     )
+    update["phase_log"][0].update({
+        "scope_type": scope.scope_type,
+        "resolved_name": scope.resolved_name,
+        "source": scope.source,
+    })
     if scope.assumptions:
         update["assumptions"] = [item.model_dump(mode="json") for item in scope.assumptions]
     return update

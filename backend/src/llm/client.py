@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 import httpx
@@ -26,6 +27,17 @@ class DeepSeekClient:
         self.timeout_sec = timeout_sec or settings.llm_timeout_sec
 
     async def chat_json(self, system: str, user: str) -> dict[str, Any]:
+        data, _meta = await self.chat_json_with_meta(system, user)
+        return data
+
+    async def chat_json_with_meta(
+        self,
+        system: str,
+        user: str,
+        *,
+        operation: str = "unknown",
+        temperature: float = 0.1,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         if not self.api_key:
             raise LLMError("LLM API key 未配置")
 
@@ -37,28 +49,42 @@ class DeepSeekClient:
                 {"role": "user", "content": user},
             ],
             "response_format": {"type": "json_object"},
-            "temperature": 0.1,
+            "temperature": temperature,
         }
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
 
+        started = time.perf_counter()
         try:
             async with httpx.AsyncClient(timeout=self.timeout_sec) as client:
                 response = await client.post(url, headers=headers, json=payload)
                 response.raise_for_status()
-                data = response.json()
+                raw_response = response.json()
         except httpx.HTTPError as exc:
             raise LLMError(f"DeepSeek 请求失败: {exc}") from exc
 
-        try:
-            content = data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise LLMParseError(f"响应格式异常: {data}") from exc
+        latency_ms = round((time.perf_counter() - started) * 1000, 2)
+        usage = raw_response.get("usage") or {}
+        meta = {
+            "operation": operation,
+            "provider": "deepseek",
+            "model": self.model,
+            "status": "success",
+            "latency_ms": latency_ms,
+            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+            "completion_tokens": int(usage.get("completion_tokens") or 0),
+            "total_tokens": int(usage.get("total_tokens") or 0),
+        }
 
         try:
-            return json.loads(content)
+            content = raw_response["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise LLMParseError(f"响应格式异常: {raw_response}") from exc
+
+        try:
+            return json.loads(content), meta
         except json.JSONDecodeError as exc:
             raise LLMParseError(f"JSON 解析失败: {content}") from exc
 

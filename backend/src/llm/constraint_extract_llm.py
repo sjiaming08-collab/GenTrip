@@ -15,6 +15,7 @@ async def llm_extract_constraint(state: GraphState) -> ConstraintExtractResult:
         state["user_query"],
         user_lat=state.get("user_lat"),
         user_lng=state.get("user_lng"),
+        memory_context=state.get("memory_context"),
     )
     raw = await client.chat_json(SYSTEM_PROMPT, user_prompt)
     try:

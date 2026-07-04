@@ -102,7 +102,7 @@ async def route_validate(state: GraphState) -> dict:
 
     relaxed: list[str] = []
     degraded = False
-    if not valid and evaluated:
+    if not valid and evaluated and ("relax_attempt" not in state or int(state.get("relax_attempt", 0)) >= 1):
         best_route, best_report = min(
             evaluated,
             key=lambda item: _route_violation_rank(item[0], constraints, item[1]),
@@ -113,10 +113,17 @@ async def route_validate(state: GraphState) -> dict:
         if best_report.feasible:
             best_report.feasible = False
 
-    return phase_update(
+    update = phase_update(
         "route_validate",
+        summary=f"valid={len(valid)} violations={sum(len(r.get('violations') or []) for r in reports)}",
         valid_routes=valid,
         validation_reports=reports,
         relaxed_constraints=relaxed,
         degraded=degraded,
     )
+    update["phase_log"][0].update({
+        "valid_count": len(valid),
+        "violation_count": sum(len(r.get("violations") or []) for r in reports),
+        "degraded": degraded,
+    })
+    return update

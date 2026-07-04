@@ -61,13 +61,30 @@ export interface Presentation {
   highlights: string[]
 }
 
-export interface RoutePlanResponse {
+export type ReplyType = 'route' | 'multi_route' | 'diff' | 'degraded_route' | 'reject'
+
+export interface AgentReplyMeta {
+  plan_path?: string | null
+  assumptions: Assumption[]
+  relaxed_constraints: string[]
+  degraded: boolean
+  next_suggested_user_moves: string[]
+}
+
+export interface AgentReplyResponse {
+  reply_type: ReplyType
   run_id: string
+  session_id?: string | null
+  structured: RoutePlanResult[]
+  presentation?: Presentation | null
+  meta: AgentReplyMeta
+}
+
+export interface RoutePlanResponse extends AgentReplyResponse {
   run_status: string
   plan_path?: string | null
   assumptions: Assumption[]
   route_results: RoutePlanResult[]
-  presentation?: Presentation | null
   current_phase: string
 }
 

@@ -20,7 +20,9 @@ async def poi_retrieve(state: GraphState) -> dict:
 
     log_entry = {
         "phase": "poi_retrieve",
+        "status": "completed",
         "ts": utc_now_iso(),
+        "summary": f"retrieved {len(result.pois)} POIs",
         "domains": [spec.domain.value for spec in plan.domains],
         "relax_by_domain": {
             meta.domain.value: meta.relax_step for meta in result.by_domain

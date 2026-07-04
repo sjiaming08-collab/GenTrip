@@ -425,6 +425,7 @@ async def route_generate(state: GraphState) -> dict:
     if not all_pois:
         return phase_update(
             "route_generate",
+            summary="generated 0 routes",
             candidate_routes=[],
             route_generation_meta={"candidate_count": 0, "skeletons": []},
         )
@@ -503,9 +504,14 @@ async def route_generate(state: GraphState) -> dict:
 
     update = phase_update(
         "route_generate",
+        summary=f"generated {len(routes)} routes",
         candidate_routes=[route.model_dump(mode="json") for route in routes],
         route_generation_meta=route_generation_meta,
     )
+    update["phase_log"][0].update({
+        "route_count": len(routes),
+        "fallback_used": generation_stats.used_fallback,
+    })
     if generation_stats.used_fallback:
         update["relaxed_constraints"] = ["route_generate_bucket_relaxed"]
     return update
