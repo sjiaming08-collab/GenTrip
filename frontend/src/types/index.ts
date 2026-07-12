@@ -30,6 +30,7 @@ export interface RouteStop {
   departure_time: string
   visit_duration_min: number
   travel_time_from_prev_min: number
+  queue_wait_min: number
 }
 
 export interface RoutePlan {
@@ -69,6 +70,36 @@ export interface AgentReplyMeta {
   relaxed_constraints: string[]
   degraded: boolean
   next_suggested_user_moves: string[]
+  phase_log: PhaseLogEntry[]
+  llm_calls: LlmCall[]
+  token_usage: TokenUsage
+  debug_trace_id?: string | null
+}
+
+export interface PhaseLogEntry {
+  phase: string
+  status: string
+  ts: string
+  summary?: string
+}
+
+export interface LlmCall {
+  operation: string
+  provider: string
+  model?: string | null
+  status: 'success' | 'skipped' | 'failed' | 'fallback'
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  latency_ms: number
+  fallback_used: boolean
+}
+
+export interface TokenUsage {
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  call_count: number
 }
 
 export interface AgentReplyResponse {
@@ -88,13 +119,75 @@ export interface RoutePlanResponse extends AgentReplyResponse {
   current_phase: string
 }
 
-export interface FeedbackRequest {
-  route_id: string
-  overall_score: number
-  comments?: string
+// ---- Diff types for Replan ----
+
+export interface DiffEntry {
+  type: 'added' | 'removed' | 'replaced' | 'unchanged'
+  sequence: number
+  old_poi_name?: string | null
+  new_poi_name?: string | null
+  reason?: string
 }
 
+export interface RoutePlanDiff {
+  original_plan_id: string
+  new_plan_id: string
+  changes: DiffEntry[]
+  summary: string
+}
+
+// ---- Feedback (aligned with backend) ----
+
+export interface FeedbackRequest {
+  session_id: string
+  action: 'confirm' | 'reject_poi' | 'rate' | 'overturn_assumption'
+  poi_id?: string | null
+  route_id?: string | null
+  score?: number | null
+  comment?: string | null
+  overturned_assumption?: string | null
+}
+
+export interface SessionTurn {
+  turn_id: string
+  user_query: string
+  reply_type: ReplyType
+  route_results: RoutePlanResult[]
+  assumptions: Assumption[]
+  presentation?: Presentation | null
+  assistant_message?: string
+  ts: string
+}
+
+export interface SessionDetail {
+  session_id: string
+  title: string
+  turn_count: number
+  mode: string
+  current_route?: RoutePlan | null
+  dialog_summary: string
+  assumptions: Assumption[]
+  recent_turns: SessionTurn[]
+  turns: SessionTurn[]
+  latest_response?: RoutePlanResponse | null
+}
+
+export interface SessionListItem {
+  session_id: string
+  title: string
+  dialog_summary: string
+  turn_count: number
+  route_count: number
+  updated_at?: string | null
+}
+
+// ---- SSE ----
+
 export interface SSEProgressEvent {
+  event_id?: number
+  run_id?: string
   phase: string
-  message: string
+  status?: string
+  summary?: string
+  data?: Record<string, unknown>
 }

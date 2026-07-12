@@ -25,6 +25,7 @@ class RetrievalFilters(BaseModel):
     radius_m: Optional[int] = None
     geo_scope: Optional[dict] = None
     budget_per_person: Optional[int] = None
+    excluded_categories: list[str] = Field(default_factory=list)
 
 
 class RetrievalPlan(BaseModel):

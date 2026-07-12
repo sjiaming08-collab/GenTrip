@@ -60,6 +60,17 @@ def _validate_route(route: RoutePlan, constraints: dict) -> ValidationReport:
     if return_by is not None and route_end is not None and route_end > return_by:
         violations.append(f"结束时间 {route.stops[-1].departure_time} 晚于返回时间 {constraints['return_by']}")
 
+    start_at = _parse_hhmm(constraints.get("start_at"))
+    first_arrival = _parse_hhmm(route.stops[0].arrival_time) if route.stops else None
+    if start_at is not None and first_arrival is not None and first_arrival < start_at:
+        violations.append(f"首站到达时间 {route.stops[0].arrival_time} 早于出发时间 {constraints['start_at']}")
+
+    queue_tolerance = constraints.get("queue_tolerance_minutes")
+    if queue_tolerance is not None:
+        for stop in route.stops:
+            if stop.queue_wait_min > int(queue_tolerance):
+                violations.append(f"第 {stop.sequence} 站预计排队 {stop.queue_wait_min} 分钟超过上限 {int(queue_tolerance)} 分钟")
+
     _validate_stop_timeline(route, violations)
 
     return ValidationReport(

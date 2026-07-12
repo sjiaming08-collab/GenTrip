@@ -77,8 +77,8 @@ async def test_extract_llm_with_fallback(monkeypatch):
     )
 
     with patch(
-        "src.services.constraint_service.llm_extract_constraint",
-        new=AsyncMock(return_value=mock_result),
+        "src.services.constraint_service.llm_extract_constraint_with_meta",
+        new=AsyncMock(return_value=(mock_result, {"operation": "constraint_extract", "status": "success"})),
     ):
         state = build_initial_state("静安日料")
         constraints, assumptions = await extract(state)
@@ -97,7 +97,7 @@ async def test_extract_llm_fallback_on_error(monkeypatch):
     monkeypatch.setattr(settings, "constraint_extract_mode", "llm_with_fallback")
 
     with patch(
-        "src.services.constraint_service.llm_extract_constraint",
+        "src.services.constraint_service.llm_extract_constraint_with_meta",
         new=AsyncMock(side_effect=LLMError("api down")),
     ):
         state = build_initial_state("徐汇逛吃")

@@ -1,7 +1,9 @@
 """领域模型 — Constraints / Route / Assumption 等。"""
 
 from .constraints import Assumption, Constraints, IntentDomain
+from .diff import DiffEntry, RoutePlanDiff
 from .memory import MemoryContext
+from .profile import UserProfile
 from .reply import AgentReply, AgentReplyMeta, ReplyType
 from .route import (
     RoutePlan,
@@ -19,11 +21,13 @@ __all__ = [
     "AgentReplyMeta",
     "Assumption",
     "Constraints",
+    "DiffEntry",
     "IntentDomain",
     "MemoryContext",
     "ReplyType",
     "RouteIntent",
     "RoutePlan",
+    "RoutePlanDiff",
     "RoutePlanResult",
     "RouteSource",
     "RouteStop",
@@ -31,5 +35,6 @@ __all__ = [
     "ScoredRoute",
     "SessionState",
     "Turn",
+    "UserProfile",
     "ValidationReport",
 ]

@@ -1,8 +1,10 @@
 import pytest
 
+from src.graph.nodes import turn_orchestrate as turn_orchestrate_module
 from src.graph.nodes.turn_orchestrate import turn_orchestrate
 from src.graph.nodes.reject_reply import reject_reply
 from src.graph.state import build_initial_state
+from src.llm.turn_classify import LlmReplanOp, LlmTurnDecision
 
 
 @pytest.mark.asyncio
@@ -23,6 +25,38 @@ async def test_turn_orchestrate_detects_replan_with_current_route():
     assert update["turn_mode"] == "replan"
     assert update["run_mode"] == "replan"
     assert update["route_intent"]["intent_type"] == "revision"
+
+
+@pytest.mark.asyncio
+async def test_turn_orchestrate_prefers_llm_intent_adjustment_over_keyword_fallback(monkeypatch):
+    async def llm_adjustment(*_args, **_kwargs):
+        return (
+            LlmTurnDecision(
+                turn_mode="replan",
+                primary_intent="亲子",
+                query_understanding="用户想微调当前路线",
+                replan_operation=LlmReplanOp(type="replace", target_seq=2, new_cuisine="咖啡"),
+            ),
+            {"operation": "turn_classify", "status": "success", "model": "test-model"},
+        )
+
+    monkeypatch.setattr(turn_orchestrate_module, "classify_turn", llm_adjustment)
+    state = build_initial_state("换个更轻松的安排")
+    state["session_current_route"] = {"plan_id": "old", "stops": [{"poi_name": "旧地点"}]}
+
+    update = await turn_orchestrate(state)
+
+    assert update["turn_mode"] == "replan"
+    assert update["route_intent"]["primary_intent"] == "亲子"
+    assert update["replan_operation"] == {
+        "type": "replace",
+        "target_seq": 2,
+        "target_category": None,
+        "new_cuisine": "咖啡",
+        "after_seq": None,
+        "overrides": {},
+    }
+    assert update["llm_calls"][0]["status"] == "success"
 
 
 @pytest.mark.asyncio

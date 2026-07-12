@@ -59,6 +59,7 @@ class GenerationStats:
     used_fallback: bool = False
     pruned_by_time: int = 0
     pruned_by_budget: int = 0
+    pruned_by_queue: int = 0
 
 
 def _domain_of_poi(poi: ScoredPoi) -> str:
@@ -78,6 +79,10 @@ def _visit_duration(poi: ScoredPoi) -> int:
     if domain == "dining":
         return 75
     return 60
+
+
+def _queue_wait_min(poi: ScoredPoi) -> int:
+    return max(0, int(poi.queue_wait_min))
 
 
 def _distance_m(a: ScoredPoi, b: ScoredPoi) -> float:
@@ -231,13 +236,15 @@ def _extend_beam(
     prev = beam.pois[-1] if beam.pois else None
     travel = _travel_time_min(prev, poi)
     next_pois = (*beam.pois, poi)
-    duration = beam.duration_min + travel + _visit_duration(poi)
+    queue_wait = _queue_wait_min(poi)
+    duration = beam.duration_min + travel + queue_wait + _visit_duration(poi)
     cost = _avg_cost(next_pois)
 
     travel_penalty = travel / 60
     budget_penalty = max(0.0, cost - budget_per_person) / max(budget_per_person, 1)
     duplicate_category_penalty = 0.2 if prev and prev.category == poi.category else 0.0
-    score = beam.score + _poi_quality(poi) - travel_penalty - budget_penalty - duplicate_category_penalty
+    queue_penalty = queue_wait / 120
+    score = beam.score + _poi_quality(poi) - travel_penalty - budget_penalty - duplicate_category_penalty - queue_penalty
 
     return BeamCandidate(
         pois=next_pois,
@@ -254,6 +261,7 @@ def _generate_for_skeleton(
     all_pois: list[ScoredPoi],
     budget_per_person: int,
     time_budget_minutes: int | None,
+    queue_tolerance_minutes: int | None,
 ) -> tuple[list[BeamCandidate], GenerationStats]:
     beams = [BeamCandidate(pois=(), duration_min=0, estimated_cost_per_person=0, score=0.0)]
     stats = GenerationStats()
@@ -269,6 +277,9 @@ def _generate_for_skeleton(
             used_ids = {poi.poi_id for poi in beam.pois}
             for poi in pool:
                 if poi.poi_id in used_ids:
+                    continue
+                if queue_tolerance_minutes is not None and _queue_wait_min(poi) > queue_tolerance_minutes:
+                    stats.pruned_by_queue += 1
                     continue
                 expanded = _extend_beam(beam, poi, budget_per_person=budget_per_person)
                 if max_duration and expanded.duration_min > max_duration:
@@ -340,6 +351,9 @@ def _minute_from_input_ts(value: object) -> int | None:
 
 def _derive_start_minute(state: GraphState, constraints: dict, skeletons: list[list[SlotHint]]) -> int:
     query = str(constraints.get("raw_query") or state.get("user_query") or "")
+    start_at = _parse_hhmm(constraints.get("start_at"))
+    if start_at is not None:
+        return _round_up_to_quarter(start_at)
     return_by = _parse_hhmm(constraints.get("return_by"))
     if return_by is not None:
         estimate = max((_estimate_route_duration_min(skeleton) for skeleton in skeletons), default=0)
@@ -352,6 +366,8 @@ def _derive_start_minute(state: GraphState, constraints: dict, skeletons: list[l
         if current_minute is not None:
             return _round_up_to_quarter(current_minute + 30)
 
+    if any(word in query for word in ("下午", "午后")):
+        return 14 * 60
     if any(word in query for word in ("午餐", "中午")):
         return 11 * 60 + 30
     if any(word in query for word in ("晚餐", "晚上", "夜宵")):
@@ -377,8 +393,9 @@ def _build_route(
     for idx, poi in enumerate(pois, start=1):
         travel = _travel_time_min(prev, poi)
         arrival = cursor_min + travel
+        queue_wait = _queue_wait_min(poi)
         visit_duration = _visit_duration(poi)
-        departure = arrival + visit_duration
+        departure = arrival + queue_wait + visit_duration
         stops.append(
             RouteStop(
                 sequence=idx,
@@ -389,6 +406,7 @@ def _build_route(
                 departure_time=_format_time(departure),
                 visit_duration_min=visit_duration,
                 travel_time_from_prev_min=travel,
+                queue_wait_min=queue_wait,
             )
         )
         cursor_min = departure
@@ -447,6 +465,7 @@ async def route_generate(state: GraphState) -> dict:
             all_pois=all_pois,
             budget_per_person=int(constraints["budget_per_person"]),
             time_budget_minutes=constraints.get("time_budget_minutes"),
+            queue_tolerance_minutes=constraints.get("queue_tolerance_minutes"),
         )
         if any(slot.categories for slot in skeleton):
             generated = [
@@ -464,11 +483,13 @@ async def route_generate(state: GraphState) -> dict:
         generation_stats.pruned_by_budget += stats.pruned_by_budget
 
     if not candidates:
-        fallback_pois = tuple(all_pois[: min(poi_count, len(all_pois))])
+        queue_tolerance = constraints.get("queue_tolerance_minutes")
+        fallback_pool = [poi for poi in all_pois if queue_tolerance is None or _queue_wait_min(poi) <= int(queue_tolerance)]
+        fallback_pois = tuple((fallback_pool or all_pois)[: min(poi_count, len(fallback_pool or all_pois))])
         candidates = [
             BeamCandidate(
                 pois=fallback_pois,
-                duration_min=sum(_visit_duration(poi) for poi in fallback_pois),
+                duration_min=sum(_visit_duration(poi) + _queue_wait_min(poi) for poi in fallback_pois),
                 estimated_cost_per_person=_avg_cost(fallback_pois),
                 score=sum(_poi_quality(poi) for poi in fallback_pois),
             )
@@ -499,6 +520,7 @@ async def route_generate(state: GraphState) -> dict:
         "start_time": _format_time(start_minute),
         "pruned_by_time": generation_stats.pruned_by_time,
         "pruned_by_budget": generation_stats.pruned_by_budget,
+        "pruned_by_queue": generation_stats.pruned_by_queue,
         "used_fallback": generation_stats.used_fallback,
     }
 

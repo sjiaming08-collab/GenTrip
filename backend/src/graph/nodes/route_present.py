@@ -68,6 +68,7 @@ async def route_present(state: GraphState) -> dict:
         assumptions=state.get("assumptions", []),
         relaxed_constraints=state.get("relaxed_constraints", []),
         evaluation_meta=state.get("route_evaluation_meta"),
+        memory_context=state.get("memory_context"),
     )
     source = "llm"
     if presentation is None:
@@ -81,7 +82,7 @@ async def route_present(state: GraphState) -> dict:
 
     update = phase_update(
         "route_present",
-        summary=f"presented {len(results)} routes via {source}",
+        summary=f"presented {len(results)} routes via {source} reply={state.get('reply_type','route')} plan={top[0].route.plan_name if top else 'none'} stops={len(top[0].route.stops) if top else 0}",
         route_results=[r.model_dump(mode="json") for r in results],
         presentation=presentation.model_dump(mode="json"),
         run_status="completed",

@@ -99,7 +99,7 @@ async def route_evaluate(state: GraphState) -> dict:
     source = "llm" if llm_scores else "rule"
     update = phase_update(
         "route_evaluate",
-        summary=f"scored {len(scored)} routes via {source}",
+        summary=f"scored {len(scored)} routes via {source} top={scored[0].final_score if scored else 0:.2f}",
         scored_routes=[s.model_dump(mode="json") for s in scored],
         route_evaluation_meta={
             "source": source,

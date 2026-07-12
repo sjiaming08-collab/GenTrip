@@ -26,9 +26,19 @@ CUISINE_KEYWORDS: list[tuple[str, list[str]]] = [
     ("小吃快餐", ["小吃", "快餐"]),
 ]
 
+EXCLUDED_CATEGORY_KEYWORDS: list[tuple[str, list[str]]] = [
+    ("博物馆", ["博物馆"]),
+    ("公园", ["公园", "绿地"]),
+    ("美术馆", ["美术馆"]),
+    ("展览", ["展览"]),
+    ("商场", ["商场", "百货"]),
+]
+_NEGATION_MARKERS = ("不想去", "不要去", "不去", "别去", "不要", "不想", "跳过")
+
 _DINING_TRIGGER = ("吃", "美食", "餐", "饭", "逛吃", "料理", "聚餐", "宴请", "午餐", "晚餐")
 _SIGHTSEEING_TRIGGER = ("逛", "玩", "游", "观光", "打卡", "展览", "博物馆", "公园", "景点", "逛逛")
 _SHOPPING_TRIGGER = ("买", "购物", "逛街买", "商场")
+_CHINESE_HOURS = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
 
 
 def detect_preferred_cuisines(query: str) -> list[str] | None:
@@ -37,6 +47,17 @@ def detect_preferred_cuisines(query: str) -> list[str] | None:
         if any(k in query for k in keywords):
             hits.append(term)
     return hits or None
+
+
+def detect_excluded_categories(query: str) -> list[str]:
+    """Extract explicit negative POI-category preferences from one turn."""
+    if not any(marker in query for marker in _NEGATION_MARKERS):
+        return []
+    return [
+        category
+        for category, keywords in EXCLUDED_CATEGORY_KEYWORDS
+        if any(keyword in query for keyword in keywords)
+    ]
 
 
 def detect_district(query: str) -> str | None:
@@ -50,8 +71,10 @@ def detect_budget(query: str) -> int | None:
     match = re.search(r"(\d+)\s*(?:元|块)", query)
     if match:
         return int(match.group(1))
-    if "200" in query:
-        return 200
+    # Also match "预算N" or "预算改成N" patterns without 元
+    m2 = re.search(r"预算\D*(\d+)", query)
+    if m2:
+        return int(m2.group(1))
     return None
 
 
@@ -72,6 +95,38 @@ def detect_return_by(query: str) -> str | None:
     if match:
         return f"{int(match.group(1)):02d}:00"
     return None
+
+
+def detect_start_at(query: str) -> str | None:
+    explicit = re.search(r"(?:从|在)?\s*(\d{1,2})\s*(?:点|:)(\d{2})?\s*(?:出发|开始|以后|之后)", query)
+    if explicit:
+        hour = int(explicit.group(1))
+        minute = int(explicit.group(2) or 0)
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            return f"{hour:02d}:{minute:02d}"
+
+    period = re.search(r"(上午|早上|中午|下午|午后|晚上|夜间)\s*(\d{1,2}|[一二两三四五六七八九十])?\s*点?", query)
+    if not period:
+        return None
+    label, raw_hour = period.groups()
+    defaults = {"上午": 9, "早上": 9, "中午": 12, "下午": 14, "午后": 14, "晚上": 18, "夜间": 19}
+    hour = int(raw_hour) if raw_hour and raw_hour.isdigit() else _CHINESE_HOURS.get(raw_hour or "", defaults[label])
+    if label in {"下午", "午后", "晚上", "夜间"} and 1 <= hour <= 11:
+        hour += 12
+    return f"{hour:02d}:00" if 0 <= hour <= 23 else None
+
+
+def detect_queue_tolerance_minutes(query: str) -> int | None:
+    if re.search(r"(?:不想|不要|不愿|别|不能)\s*排队", query):
+        return 0
+    for pattern in (
+        r"排队.{0,8}?(?:不超过|最多|以内)\s*(\d+)\s*分(?:钟)?",
+        r"(?:可以|可|能)?(?:接受|容忍)?\s*排队\s*(\d+)\s*分(?:钟)?",
+    ):
+        match = re.search(pattern, query)
+        if match:
+            return int(match.group(1))
+    return 30 if "排队半小时" in query else None
 
 
 def detect_domains(query: str) -> list[IntentDomain]:
@@ -164,6 +219,13 @@ def _memory_domains(state: GraphState) -> list[IntentDomain] | None:
             continue
     return domains or None
 
+
+def _memory_categories(state: GraphState, slot: str) -> list[str]:
+    memory = state.get("memory_context") or {}
+    current_constraints = memory.get("current_constraints") or {}
+    raw = current_constraints.get(slot) or []
+    return [str(item) for item in raw if str(item)] if isinstance(raw, list) else []
+
 def _memory_assumption(slot: str, value: str, message: str) -> Assumption:
     return Assumption(
         slot=slot,
@@ -215,6 +277,7 @@ def rule_based_extract(state: GraphState) -> tuple[Constraints, list[Assumption]
             )
 
     minutes = detect_minutes(query)
+    start_at = detect_start_at(query)
     return_by = detect_return_by(query)
     if minutes is None and return_by is None:
         memory_minutes = _memory_positive_int(state, "time_budget_minutes")
@@ -234,6 +297,29 @@ def rule_based_extract(state: GraphState) -> tuple[Constraints, list[Assumption]
                 )
             )
 
+    if start_at is None:
+        memory_start_at = _memory_assumption_value(state, "start_at")
+        if memory_start_at:
+            start_at = memory_start_at
+            assumptions.append(_memory_assumption("start_at", start_at, f"沿用上一轮出发时间：{start_at}"))
+
+    queue_tolerance_minutes = detect_queue_tolerance_minutes(query)
+    if queue_tolerance_minutes is None:
+        memory_queue_tolerance = _memory_assumption_value(state, "queue_tolerance_minutes")
+        if memory_queue_tolerance is not None:
+            try:
+                queue_tolerance_minutes = max(0, int(memory_queue_tolerance))
+            except ValueError:
+                queue_tolerance_minutes = None
+            if queue_tolerance_minutes is not None:
+                assumptions.append(
+                    _memory_assumption(
+                        "queue_tolerance_minutes",
+                        str(queue_tolerance_minutes),
+                        f"沿用上一轮排队上限：{queue_tolerance_minutes} 分钟",
+                    )
+                )
+
     domains = detect_domains(query)
     if not _query_has_domain_signal(query):
         domains = _memory_domains(state) or domains
@@ -251,15 +337,30 @@ def rule_based_extract(state: GraphState) -> tuple[Constraints, list[Assumption]
                 )
             )
 
+    excluded_categories = detect_excluded_categories(query)
+    if not excluded_categories:
+        excluded_categories = _memory_categories(state, "excluded_categories")
+        if excluded_categories:
+            assumptions.append(
+                _memory_assumption(
+                    "excluded_categories",
+                    ",".join(excluded_categories),
+                    f"沿用上一轮避开项：{'、'.join(excluded_categories)}",
+                )
+            )
+
     constraints = Constraints(
         raw_query=query,
         domains=domains,
         district=district,
         time_budget_minutes=minutes,
+        start_at=start_at,
         return_by=return_by,
+        queue_tolerance_minutes=queue_tolerance_minutes,
         budget_per_person=budget,
         poi_count=DEFAULT_POI_COUNT,
         preferred_cuisines=preferred_cuisines,
         activity_tags=detect_activity_tags(query),
+        excluded_categories=excluded_categories,
     )
     return constraints, assumptions

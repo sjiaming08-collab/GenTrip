@@ -18,7 +18,10 @@ from .constraint_rules import (
     DEFAULT_MINUTES,
     DEFAULT_POI_COUNT,
     DISTRICTS,
+    detect_excluded_categories,
+    detect_queue_tolerance_minutes,
     detect_domains,
+    detect_start_at,
     rule_based_extract,
 )
 
@@ -124,6 +127,11 @@ def normalize_llm_result(
             )
 
     minutes = result.time_budget_minutes
+    start_at = (
+        detect_start_at(query)
+        or _valid_return_by(result.start_at)
+        or _valid_return_by(_memory_value(state, "start_at"))
+    )
     return_by = _valid_return_by(result.return_by)
     if minutes is None and return_by is None:
         memory_minutes = _memory_int(state, "time_budget_minutes")
@@ -142,6 +150,14 @@ def normalize_llm_result(
         assumptions.append(
             _assumption("time_budget_minutes", str(minutes), f"时长无效，默认 {minutes // 60} 小时行程", source="scene_default")
         )
+
+    queue_tolerance_minutes = detect_queue_tolerance_minutes(query)
+    if queue_tolerance_minutes is None:
+        queue_tolerance_minutes = result.queue_tolerance_minutes
+    if queue_tolerance_minutes is None:
+        queue_tolerance_minutes = _memory_int(state, "queue_tolerance_minutes")
+    if queue_tolerance_minutes is not None:
+        queue_tolerance_minutes = max(0, int(queue_tolerance_minutes))
 
     poi_count = result.poi_count if result.poi_count and result.poi_count > 0 else DEFAULT_POI_COUNT
 
@@ -176,11 +192,17 @@ def normalize_llm_result(
         domains=domains,
         district=district,
         time_budget_minutes=minutes,
+        start_at=start_at,
         return_by=return_by,
+        queue_tolerance_minutes=queue_tolerance_minutes,
         budget_per_person=budget,
         poi_count=poi_count,
         preferred_cuisines=preferred_cuisines,
         activity_tags=result.activity_tags,
+        excluded_categories=(
+            detect_excluded_categories(query)
+            or [item.strip() for item in (_memory_value(state, "excluded_categories") or "").split(",") if item.strip()]
+        ),
     )
     return constraints, _merge_assumptions(assumptions)
 

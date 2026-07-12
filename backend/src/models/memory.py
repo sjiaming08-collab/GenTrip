@@ -24,5 +24,7 @@ class MemoryContext(BaseModel):
     current_constraints: dict[str, Any] | None = None
     route_intent: dict[str, Any] | None = None
     assumptions: list[dict[str, Any]] = Field(default_factory=list)
+    confirmed_stop_ids: list[str] = Field(default_factory=list)
+    rejected_poi_ids: list[str] = Field(default_factory=list)
     recent_turns: list[dict[str, Any]] = Field(default_factory=list)
     user_profile: dict[str, Any] = Field(default_factory=dict)

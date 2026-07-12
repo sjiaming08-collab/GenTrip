@@ -8,11 +8,7 @@ from ..config import settings
 from ..models.session import SessionState
 from .client import get_llm_client
 from .exceptions import LLMError, LLMParseError
-
-SYSTEM_PROMPT = """你是 GenTrip 的对话记忆摘要器。
-请把多轮路线规划对话压缩成一句中文摘要，保留区域、预算、时长、偏好、用户明确修改过的点。
-只输出 JSON：{"dialog_summary": "一句话摘要"}。
-"""
+from .prompts.session_summary import SYSTEM_PROMPT
 
 
 def fallback_dialog_summary(session: SessionState) -> str:

@@ -11,12 +11,7 @@ from ..config import settings
 from ..models.route import Presentation, RoutePlanResult
 from .client import get_llm_client
 from .exceptions import LLMError
-
-SYSTEM_PROMPT = """你是 GenTrip 的路线推荐文案助手。
-生成面向用户的中文推荐文案，标题必须以「为您推荐」开头。
-文案要具体、自然、简洁，不编造候选路线中不存在的地点。
-只输出 JSON：{"title":"...","summary":"...","highlights":["..."]}。
-"""
+from .prompts.route_present import SYSTEM_PROMPT
 
 
 class LlmPresentation(BaseModel):
@@ -53,6 +48,7 @@ async def llm_present_route_with_meta(
     assumptions: list[dict],
     relaxed_constraints: list[str],
     evaluation_meta: dict | None = None,
+    memory_context: dict | None = None,
 ) -> tuple[Presentation | None, dict]:
     if not settings.llm_enabled or not settings.llm_api_key or not results:
         return None, {"operation": "route_present", "status": "skipped"}
@@ -64,6 +60,8 @@ async def llm_present_route_with_meta(
         "assumptions": assumptions,
         "relaxed_constraints": relaxed_constraints,
         "evaluation_meta": evaluation_meta or {},
+        "dialog_summary": (memory_context or {}).get("dialog_summary", ""),
+        "recent_turns": (memory_context or {}).get("recent_turns_brief", []),
     }
     try:
         client = get_llm_client()

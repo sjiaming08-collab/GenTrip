@@ -156,3 +156,21 @@ async def test_route_generate_derives_start_time_from_return_by():
     route = RoutePlan.model_validate(update["candidate_routes"][0])
     assert update["route_generation_meta"]["start_time"] != "14:00"
     assert route.stops[-1].departure_time <= "19:00"
+
+
+@pytest.mark.asyncio
+async def test_route_generate_honors_explicit_afternoon_start_and_queue_wait():
+    pois = [
+        {**_poi(1, dimension="sightseeing", category="公园", lat=31.213, lng=121.436), "queue_wait_min": 20},
+        {**_poi(2, dimension="sightseeing", category="博物馆", lat=31.214, lng=121.437), "queue_wait_min": 10},
+    ]
+    state = _state(pois, domains=["sightseeing"], raw_query="下午两点出发去玩", poi_count=2)
+    state["constraints"]["start_at"] = "14:00"
+
+    update = await route_generate(state)
+
+    route = RoutePlan.model_validate(update["candidate_routes"][0])
+    assert update["route_generation_meta"]["start_time"] == "14:00"
+    assert route.stops[0].arrival_time == "14:00"
+    assert sum(stop.queue_wait_min for stop in route.stops) == 30
+    assert route.total_duration_min == 158

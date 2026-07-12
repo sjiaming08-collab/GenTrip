@@ -39,22 +39,22 @@ const emit = defineEmits<{
 <style scoped>
 .map-container {
   min-height: 400px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #d9ebdf;
   border-radius: 8px;
   overflow: hidden;
-  background: #f9fafb;
+  background: #f4fbf6;
 }
 .map-placeholder {
   height: 100%;
   padding: 1rem;
-  color: #374151;
+  color: #315444;
 }
 .map-header h3 {
   margin: 0;
 }
 .map-header p,
 .hint {
-  color: #6b7280;
+  color: #718c7e;
   font-size: 0.9rem;
 }
 .route-list {
@@ -72,12 +72,12 @@ const emit = defineEmits<{
   padding: 0.7rem;
   border-radius: 8px;
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #dcebe1;
   cursor: pointer;
 }
 .route-list li.selected {
-  border-color: #2563eb;
-  background: #eff6ff;
+  border-color: #19805d;
+  background: #e9f7ed;
 }
 .route-list span {
   display: inline-flex;
@@ -86,11 +86,11 @@ const emit = defineEmits<{
   width: 1.5rem;
   height: 1.5rem;
   border-radius: 999px;
-  background: #e0f2fe;
-  color: #0369a1;
+  background: #d9f0e1;
+  color: #13704f;
   font-weight: 700;
 }
 .route-list small {
-  color: #6b7280;
+  color: #719082;
 }
 </style>

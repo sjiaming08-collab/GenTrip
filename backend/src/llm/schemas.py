@@ -16,7 +16,9 @@ class ConstraintExtractResult(BaseModel):
     domains: list[IntentDomain] = Field(default_factory=list)
     district: str | None = None
     time_budget_minutes: int | None = None
+    start_at: str | None = None
     return_by: str | None = None
+    queue_tolerance_minutes: int | None = None
     budget_per_person: int | None = None
     poi_count: int | None = None
     preferred_cuisines: list[str] | None = None

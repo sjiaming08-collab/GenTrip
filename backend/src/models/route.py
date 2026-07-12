@@ -25,6 +25,7 @@ class ScoredPoi(BaseModel):
     price_per_person: int
     composite_score: float = 0.0
     dimension: Optional[str] = None
+    queue_wait_min: int = 0
 
 
 class RouteStop(BaseModel):
@@ -36,6 +37,7 @@ class RouteStop(BaseModel):
     departure_time: str
     visit_duration_min: int
     travel_time_from_prev_min: int = 0
+    queue_wait_min: int = 0
 
 
 class RoutePlan(BaseModel):

@@ -4,13 +4,14 @@ import type { FeedbackRequest, RoutePlanResult } from '../types'
 
 const props = defineProps<{
   result?: RoutePlanResult | null
+  sessionId?: string | null
 }>()
 
 const emit = defineEmits<{
   submitFeedback: [feedback: FeedbackRequest]
 }>()
 
-const overallScore = ref(5)
+const score = ref(5)
 const comments = ref('')
 const submitted = ref(false)
 
@@ -19,16 +20,18 @@ watch(
   () => {
     submitted.value = false
     comments.value = ''
-    overallScore.value = 5
+    score.value = 5
   }
 )
 
 function handleSubmitFeedback() {
-  if (!props.result) return
+  if (!props.result || !props.sessionId) return
   emit('submitFeedback', {
+    session_id: props.sessionId,
+    action: 'rate',
     route_id: props.result.route.plan_id,
-    overall_score: overallScore.value,
-    comments: comments.value.trim() || undefined,
+    score: score.value,
+    comment: comments.value.trim() || undefined,
   })
   submitted.value = true
 }
@@ -41,9 +44,9 @@ function handleSubmitFeedback() {
     <form v-else class="feedback-form" @submit.prevent="handleSubmitFeedback">
       <label>
         评分
-        <select v-model.number="overallScore">
-          <option v-for="score in [5, 4, 3, 2, 1]" :key="score" :value="score">
-            {{ score }} 分
+        <select v-model.number="score">
+          <option v-for="s in [5, 4, 3, 2, 1]" :key="s" :value="s">
+            {{ s }} 分
           </option>
         </select>
       </label>
@@ -60,7 +63,7 @@ function handleSubmitFeedback() {
 .feedback-panel {
   margin-top: 1.5rem;
   padding: 1rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #d9ebdf;
   border-radius: 8px;
   background: #fff;
 }
@@ -74,7 +77,7 @@ h3 {
 label {
   display: grid;
   gap: 0.35rem;
-  color: #374151;
+  color: #416454;
   font-size: 0.9rem;
 }
 select,
@@ -82,7 +85,7 @@ textarea {
   box-sizing: border-box;
   width: 100%;
   padding: 0.55rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid #cfe4d6;
   border-radius: 8px;
   font: inherit;
 }
@@ -91,12 +94,12 @@ button {
   padding: 0.5rem 1rem;
   border: none;
   border-radius: 8px;
-  background: #111827;
+  background: #167b59;
   color: #fff;
   cursor: pointer;
 }
 .thanks {
   margin: 0;
-  color: #047857;
+  color: #167b59;
 }
 </style>

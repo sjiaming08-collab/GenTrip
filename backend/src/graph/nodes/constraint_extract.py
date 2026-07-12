@@ -14,7 +14,7 @@ async def constraint_extract(state: GraphState) -> dict:
 
     update = phase_update(
         "constraint_extract",
-        summary="extracted constraints",
+        summary=f"domains={[d.value for d in constraints.domains]} district={constraints.district} budget={constraints.budget_per_person} cuisines={constraints.preferred_cuisines} excluded={constraints.excluded_categories} assumptions={len(assumptions)}",
         constraints=constraints.model_dump(mode="json"),
         assumptions=[a.model_dump(mode="json") for a in assumptions],
         constraint_embedding=None,

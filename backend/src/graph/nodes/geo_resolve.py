@@ -5,7 +5,12 @@ from ..state import GraphState, phase_update
 
 
 async def geo_resolve(state: GraphState) -> dict:
-    resolver = GeoResolver()
+    # Use constraints.district (from query or memory) as fallback instead of hardcoded default
+    constraints = state.get("constraints") or {}
+    memory_district = constraints.get("district", "")
+    default_district = memory_district if memory_district in {"徐汇区", "静安区", "浦东新区", "黄浦区"} else "徐汇区"
+
+    resolver = GeoResolver(default_district=default_district)
     scope = await resolver.resolve_geo_scope(
         state["user_query"],
         user_lat=state.get("user_lat"),

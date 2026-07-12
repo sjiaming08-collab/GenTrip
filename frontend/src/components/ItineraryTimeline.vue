@@ -40,7 +40,7 @@ const emit = defineEmits<{
 <style scoped>
 .itinerary-timeline {
   padding: 1rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #d9ebdf;
   border-radius: 8px;
   background: #fff;
 }
@@ -56,17 +56,17 @@ h3 {
 }
 .summary {
   margin: 0.25rem 0 0;
-  color: #6b7280;
+  color: #6b8678;
   font-size: 0.9rem;
 }
 .score {
   flex: 0 0 auto;
-  color: #047857;
+  color: #167b59;
   font-weight: 700;
   font-size: 0.9rem;
 }
 .empty-state {
-  color: #999;
+  color: #87a093;
   text-align: center;
   padding: 3rem 0;
 }

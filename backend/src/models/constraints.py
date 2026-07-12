@@ -25,8 +25,11 @@ class Constraints(BaseModel):
     domains: list[IntentDomain] = Field(min_length=1)
     district: str
     time_budget_minutes: Optional[int] = None
+    start_at: Optional[str] = None
     return_by: Optional[str] = None
+    queue_tolerance_minutes: Optional[int] = None
     budget_per_person: int
     poi_count: int = 3
     preferred_cuisines: Optional[list[str]] = None
     activity_tags: Optional[list[str]] = None
+    excluded_categories: list[str] = Field(default_factory=list)

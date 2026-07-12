@@ -78,7 +78,7 @@ def _poi_id(poi: dict) -> str:
 
 
 def _poi_district(poi: dict) -> str:
-    return poi.get("district") or parse_district(poi.get("address", ""), DISTRICTS)
+    return poi.get("district") or poi.get("area") or parse_district(poi.get("address", ""), DISTRICTS)
 
 
 def _poi_business_area(poi: dict) -> str:
@@ -98,6 +98,16 @@ def _poi_rating(poi: dict) -> float:
 
 def _poi_price(poi: dict) -> int:
     return int(poi.get("avgprice") or poi.get("avg_price") or 0)
+
+
+def _poi_queue_wait_min(poi: dict) -> int:
+    raw = poi.get("queue_minutes")
+    if isinstance(raw, dict):
+        raw = raw.get("weekday", 0)
+    try:
+        return max(0, int(raw or 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _taxonomy_aliases() -> dict[str, str]:
@@ -168,6 +178,7 @@ def to_scored_poi(
         price_per_person=_poi_price(poi),
         composite_score=max(0.0, 1.0 - rank_index * 0.05),
         dimension=dimension.value,
+        queue_wait_min=_poi_queue_wait_min(poi),
     )
 
 
@@ -252,10 +263,19 @@ def _filter_pool(
     *,
     geo: _GeoRelaxStep,
     budget_per_person: int | None,
+    excluded_categories: list[str] | None = None,
 ) -> list[dict]:
     result = [p for p in pois if _matches_geo(p, geo)]
     if budget_per_person is not None:
         result = [p for p in result if _matches_budget(p, budget_per_person)]
+    if excluded_categories:
+        result = [
+            poi for poi in result
+            if not any(
+                excluded in poi_primary_category(poi) or poi_primary_category(poi) in excluded
+                for excluded in excluded_categories
+            )
+        ]
     return result
 
 
@@ -461,6 +481,7 @@ def _retrieve_one_domain(
         pinned,
         geo=initial_geo,
         budget_per_person=plan.filters.budget_per_person if spec.domain == IntentDomain.DINING else None,
+        excluded_categories=plan.filters.excluded_categories,
     )
 
     assumptions: list[Assumption] = []
@@ -477,6 +498,7 @@ def _retrieve_one_domain(
                 pool,
                 geo=geo_step,
                 budget_per_person=domain_step.budget_per_person,
+                excluded_categories=plan.filters.excluded_categories,
             )
             if len(filtered) >= MIN_CANDIDATES or (domain_step is domain_steps[-1] and geo_step is geo_steps[-1]):
                 used_step = _combined_step_name(domain_step, geo_step)

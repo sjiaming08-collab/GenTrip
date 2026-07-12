@@ -39,8 +39,23 @@ class PlanResponse(BaseModel):
     meta: AgentReplyMetaResponse = Field(default_factory=AgentReplyMetaResponse)
 
 
+class PlanRunStartedResponse(BaseModel):
+    run_id: str
+    session_id: str
+    status: str = "queued"
+
+
+class RunStatusResponse(BaseModel):
+    run_id: str
+    session_id: str
+    status: str
+    error_code: Optional[str] = None
+    result: Optional[PlanResponse] = None
+
+
 class SessionResponse(BaseModel):
     session_id: str
+    title: str = ""
     turn_count: int
     mode: str
     current_route: Optional[dict]
@@ -48,3 +63,32 @@ class SessionResponse(BaseModel):
     assumptions: list[dict]
     route_intent: Optional[dict] = None
     recent_turns: list[dict] = Field(default_factory=list)
+    turns: list[dict] = Field(default_factory=list)
+    latest_response: Optional[dict] = None
+
+
+class SessionListItemResponse(BaseModel):
+    session_id: str
+    title: str = ""
+    dialog_summary: str = ""
+    turn_count: int = 0
+    route_count: int = 0
+    updated_at: str | None = None
+
+
+class SessionListResponse(BaseModel):
+    sessions: list[SessionListItemResponse] = Field(default_factory=list)
+
+
+class SessionUpdateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=80)
+
+
+class FeedbackRequest(BaseModel):
+    session_id: str
+    action: str  # "confirm" | "reject_poi" | "rate" | "overturn_assumption"
+    poi_id: Optional[str] = None
+    route_id: Optional[str] = None
+    score: Optional[int] = None
+    comment: Optional[str] = None
+    overturned_assumption: Optional[str] = None

@@ -78,6 +78,17 @@ async def test_route_validate_checks_total_duration_and_return_by():
 
 
 @pytest.mark.asyncio
+async def test_route_validate_checks_start_time_and_queue_tolerance():
+    route = _route("too_early")
+    route["stops"][0]["queue_wait_min"] = 35
+    update = await route_validate(_state([route], start_at="14:00", queue_tolerance_minutes=30))
+
+    violations = update["validation_reports"][0]["violations"]
+    assert any("早于出发时间" in item for item in violations)
+    assert any("预计排队" in item for item in violations)
+
+
+@pytest.mark.asyncio
 async def test_route_validate_checks_travel_time_legality():
     update = await route_validate(_state([_route("bad_travel", travel=120)]))
 

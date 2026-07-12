@@ -23,7 +23,10 @@ const emit = defineEmits<{
         {{ stop.arrival_time }} - {{ stop.departure_time }}
         <span v-if="stop.travel_time_from_prev_min > 0"> · 路上 {{ stop.travel_time_from_prev_min }} 分钟</span>
       </span>
-      <span class="meta-row">停留 {{ stop.visit_duration_min }} 分钟</span>
+      <span class="meta-row">
+        停留 {{ stop.visit_duration_min }} 分钟
+        <template v-if="stop.queue_wait_min > 0"> · 预计排队 {{ stop.queue_wait_min }} 分钟</template>
+      </span>
     </span>
   </button>
 </template>
@@ -35,7 +38,7 @@ const emit = defineEmits<{
   align-items: flex-start;
   gap: 0.75rem;
   padding: 0.85rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #dcebe1;
   border-radius: 8px;
   margin-bottom: 0.6rem;
   background: #fff;
@@ -46,8 +49,8 @@ const emit = defineEmits<{
 }
 .poi-card:hover,
 .poi-card.current {
-  border-color: #2563eb;
-  box-shadow: 0 1px 8px rgba(37, 99, 235, 0.12);
+  border-color: #238862;
+  box-shadow: 0 4px 12px rgba(31, 112, 76, 0.11);
 }
 .sequence {
   width: 1.75rem;
@@ -57,8 +60,8 @@ const emit = defineEmits<{
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #def3e5;
+  color: #147150;
   font-weight: 700;
 }
 .content {
@@ -75,13 +78,13 @@ const emit = defineEmits<{
 .category {
   padding: 0.1rem 0.45rem;
   border-radius: 999px;
-  background: #f3f4f6;
-  color: #4b5563;
+  background: #eff8f1;
+  color: #4d7563;
   font-size: 0.78rem;
 }
 .time-row,
 .meta-row {
-  color: #6b7280;
+  color: #6d8b7c;
   font-size: 0.88rem;
 }
 </style>

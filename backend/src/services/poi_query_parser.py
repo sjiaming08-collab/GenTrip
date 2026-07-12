@@ -130,11 +130,13 @@ def _filters_from_geo_scope(geo_scope: dict | None, constraints: dict, query: st
             radius_m=geo_scope.get("radius_m"),
             geo_scope=geo_scope,
             budget_per_person=budget,
+            excluded_categories=constraints.get("excluded_categories") or [],
         )
 
     return RetrievalFilters(
         district=constraints.get("district") or detect_district(query) or DEFAULT_DISTRICT,
         budget_per_person=budget,
+        excluded_categories=constraints.get("excluded_categories") or [],
     )
 
 

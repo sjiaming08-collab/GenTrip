@@ -6,9 +6,12 @@ from src.services.constraint_rules import (
     detect_budget,
     detect_district,
     detect_domains,
+    detect_excluded_categories,
     detect_minutes,
     detect_preferred_cuisines,
+    detect_queue_tolerance_minutes,
     detect_return_by,
+    detect_start_at,
     rule_based_extract,
 )
 
@@ -28,6 +31,13 @@ def test_detect_return_by():
     assert detect_return_by("7点前回家") == "07:00"
 
 
+def test_detect_start_and_queue_constraints():
+    assert detect_start_at("下午三点出发去徐汇玩") == "15:00"
+    assert detect_start_at("下午去玩") == "14:00"
+    assert detect_queue_tolerance_minutes("排队不超过30分钟") == 30
+    assert detect_queue_tolerance_minutes("不想排队") == 0
+
+
 def test_detect_domains():
     assert detect_domains("静安购物") == [IntentDomain.SHOPPING]
     assert detect_domains("徐汇逛吃") == [IntentDomain.DINING, IntentDomain.SIGHTSEEING]
@@ -37,6 +47,10 @@ def test_detect_domains():
 def test_detect_preferred_cuisines():
     assert detect_preferred_cuisines("想吃中餐") == ["中餐"]
     assert detect_preferred_cuisines("本帮菜") == ["本帮菜"]
+
+
+def test_detect_excluded_categories():
+    assert detect_excluded_categories("我不想去博物馆和公园") == ["博物馆", "公园"]
 
 
 def test_rule_based_extract_chinese_food():
@@ -69,3 +83,12 @@ def test_rule_based_extract_explicit():
     assert constraints.time_budget_minutes == 180
     assert constraints.activity_tags == ["逛吃"]
     assert assumptions == []
+
+
+def test_rule_based_extract_preserves_start_and_queue_constraints():
+    constraints, assumptions = rule_based_extract(build_initial_state("下午两点出发，排队不超过30分钟，黄浦区逛吃"))
+
+    assert constraints.start_at == "14:00"
+    assert constraints.queue_tolerance_minutes == 30
+    assert "start_at" not in {item.slot for item in assumptions}
+    assert "queue_tolerance_minutes" not in {item.slot for item in assumptions}

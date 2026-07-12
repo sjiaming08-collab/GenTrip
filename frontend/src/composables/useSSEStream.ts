@@ -1,9 +1,9 @@
 import { ref } from 'vue'
-import type { RoutePlanResponse } from '../types'
-import { subscribeToStream } from '../api'
+import type { RoutePlanResponse, SSEProgressEvent } from '../types'
+import { cancelPlanRun, subscribeToStream } from '../api'
 
 /**
- * SSE 流式进度 composable。当前后端还没有 SSE endpoint，保留可编译的调用边界。
+ * SSE 流式进度 composable — 对接后端 GET /routes/plan/stream
  */
 export function useSSEStream() {
   const currentPhase = ref('idle')
@@ -11,6 +11,7 @@ export function useSSEStream() {
   const routeResult = ref<RoutePlanResponse | null>(null)
   const error = ref<string | null>(null)
   let source: EventSource | null = null
+  let activeRunId: string | null = null
 
   function stopStream() {
     source?.close()
@@ -18,21 +19,34 @@ export function useSSEStream() {
     isStreaming.value = false
   }
 
-  function startStream(sessionId: string) {
+  async function cancelStream() {
+    if (activeRunId) {
+      try {
+        await cancelPlanRun(activeRunId)
+      } catch {
+        // The stream can still complete after a racing terminal update.
+      }
+    }
+    stopStream()
+  }
+
+  function startStream(query: string, sessionId: string | null) {
     stopStream()
     error.value = null
     isStreaming.value = true
     try {
       source = subscribeToStream(
-        sessionId,
-        (phase) => {
-          currentPhase.value = phase
+        { query, session_id: sessionId ?? undefined },
+        (event: SSEProgressEvent) => {
+          currentPhase.value = event.phase
+          activeRunId = event.run_id || activeRunId
         },
-        (route) => {
+        (route: RoutePlanResponse) => {
           routeResult.value = route
+          activeRunId = null
           stopStream()
         },
-        (err) => {
+        (err: Error) => {
           error.value = err.message
           stopStream()
         },
@@ -50,5 +64,6 @@ export function useSSEStream() {
     error,
     startStream,
     stopStream,
+    cancelStream,
   }
 }

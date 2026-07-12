@@ -25,13 +25,18 @@ class Turn(BaseModel):
     reply_type: str
     route_results: list[dict[str, Any]] = Field(default_factory=list)
     assumptions: list[dict[str, Any]] = Field(default_factory=list)
+    presentation: dict[str, Any] | None = None
+    assistant_message: str = ""
     ts: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class SessionState(BaseModel):
-    """In-memory cross-turn state keyed by session_id."""
+    """Cross-turn state persisted by session_id."""
 
     session_id: str
+    user_id: str | None = None
+    title: str = ""
+    version: int = 0
     turn_count: int = 0
     mode: str = "planning"
     route_intent: RouteIntent | None = None
@@ -40,8 +45,11 @@ class SessionState(BaseModel):
     current_constraints: dict[str, Any] | None = None
     confirmed_stop_ids: list[str] = Field(default_factory=list)
     rejected_poi_ids: list[str] = Field(default_factory=list)
+    overridden_slots: list[str] = Field(default_factory=list)
+    route_feedback: list[dict[str, Any]] = Field(default_factory=list)
     dialog_summary: str = ""
     recent_turns: list[Turn] = Field(default_factory=list)
+    latest_response: dict[str, Any] | None = None
 
     def add_turn(self, turn: Turn) -> None:
         self.recent_turns.append(turn)

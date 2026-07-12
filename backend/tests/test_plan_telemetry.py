@@ -21,12 +21,11 @@ async def test_plan_api_includes_local_telemetry_when_llm_disabled(client):
         "geo_resolve",
     ]
     assert "route_present" in [item["phase"] for item in meta["phase_log"]]
-    assert _ops(meta["llm_calls"]) == [
-        "constraint_extract",
-        "route_evaluate",
-        "route_present",
-        "session_summary",
-    ]
+    assert "turn_orchestrate" in _ops(meta["llm_calls"])
+    assert "constraint_extract" in _ops(meta["llm_calls"])
+    assert "route_evaluate" in _ops(meta["llm_calls"])
+    assert "route_present" in _ops(meta["llm_calls"])
+    assert "session_summary" in _ops(meta["llm_calls"])
     assert {call["status"] for call in meta["llm_calls"]} == {"skipped"}
     assert meta["token_usage"] == {
         "prompt_tokens": 0,
@@ -39,11 +38,12 @@ async def test_plan_api_includes_local_telemetry_when_llm_disabled(client):
 class UsageClient:
     async def chat_json_with_meta(self, system, user, *, operation="unknown", temperature=0.1):
         usage_by_operation = {
+            "turn_classify": (40, 10),
             "route_evaluate": (100, 20),
             "route_present": (50, 10),
             "session_summary": (30, 5),
         }
-        prompt_tokens, completion_tokens = usage_by_operation[operation]
+        prompt_tokens, completion_tokens = usage_by_operation.get(operation, (0, 0))
         meta = {
             "operation": operation,
             "provider": "deepseek",
@@ -54,6 +54,8 @@ class UsageClient:
             "completion_tokens": completion_tokens,
             "total_tokens": prompt_tokens + completion_tokens,
         }
+        if operation == "turn_classify":
+            return {"turn_mode": "plan", "primary_intent": "路线规划", "query_understanding": "test", "reason": "test", "replan_operation": None}, meta
         if operation == "route_evaluate":
             return {
                 "scores": [
@@ -82,16 +84,17 @@ async def test_plan_api_sums_mock_llm_usage(client, monkeypatch):
     monkeypatch.setattr("src.llm.route_evaluate.get_llm_client", lambda: fake)
     monkeypatch.setattr("src.llm.route_present.get_llm_client", lambda: fake)
     monkeypatch.setattr("src.llm.session_summary.get_llm_client", lambda: fake)
+    monkeypatch.setattr("src.llm.turn_classify.get_llm_client", lambda: fake)
 
     response = await client.post("/api/v1/routes/plan", json={"query": "????3??"})
 
     assert response.status_code == 200
     meta = response.json()["meta"]
     assert meta["token_usage"] == {
-        "prompt_tokens": 180,
-        "completion_tokens": 35,
-        "total_tokens": 215,
-        "call_count": 3,
+        "prompt_tokens": 220,
+        "completion_tokens": 45,
+        "total_tokens": 265,
+        "call_count": 4,
     }
     by_operation = {call["operation"]: call for call in meta["llm_calls"]}
     assert by_operation["constraint_extract"]["status"] == "skipped"
@@ -113,6 +116,7 @@ async def test_llm_failure_is_recorded_and_route_falls_back(client, monkeypatch)
     monkeypatch.setattr("src.llm.route_evaluate.get_llm_client", lambda: fake)
     monkeypatch.setattr("src.llm.route_present.get_llm_client", lambda: fake)
     monkeypatch.setattr("src.llm.session_summary.get_llm_client", lambda: fake)
+    monkeypatch.setattr("src.llm.turn_classify.get_llm_client", lambda: fake)
 
     response = await client.post("/api/v1/routes/plan", json={"query": "????3??"})
 
@@ -120,7 +124,8 @@ async def test_llm_failure_is_recorded_and_route_falls_back(client, monkeypatch)
     body = response.json()
     assert body["run_status"] == "completed"
     by_operation = {call["operation"]: call for call in body["meta"]["llm_calls"]}
+    assert by_operation["turn_orchestrate"]["status"] == "failed"
     assert by_operation["route_evaluate"]["status"] == "failed"
     assert by_operation["route_evaluate"]["fallback_used"] is True
     assert by_operation["route_present"]["status"] == "failed"
-    assert body["meta"]["token_usage"]["call_count"] == 3
+    assert body["meta"]["token_usage"]["call_count"] == 4

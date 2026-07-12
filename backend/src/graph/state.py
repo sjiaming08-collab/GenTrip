@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import operator
 from datetime import datetime, timezone
 from typing import Annotated, Any, Optional, TypedDict
 from uuid import uuid4
+
+logger = logging.getLogger("gentrip.graph")
 
 
 def merge_assumptions(existing: list[dict], new: list[dict]) -> list[dict]:
@@ -60,6 +63,16 @@ class GraphState(TypedDict, total=False):
     scored_routes: list
     validation_reports: list
 
+    # L3 WORKING — Replan 子图
+    replan_operation: Optional[dict]
+    original_route: Optional[dict]
+    locked_stop_indices: list[int]
+    unlocked_slots: list
+    replacement_candidates: list
+    delta_valid: bool
+    delta_retry_count: int
+    diff_result: Optional[dict]
+
     # L4 OUTPUT
     route_results: list
     presentation: Optional[dict]
@@ -70,6 +83,7 @@ class GraphState(TypedDict, total=False):
     phase_log: Annotated[list[dict], operator.add]
     llm_calls: Annotated[list[dict], operator.add]
     stream_events: Annotated[list[dict], operator.add]
+    runtime_run_id: Optional[str]
 
 
 def utc_now_iso() -> str:
@@ -121,6 +135,14 @@ def build_initial_state(
         candidate_routes=[],
         valid_routes=[],
         scored_routes=[],
+        replan_operation=None,
+        original_route=None,
+        locked_stop_indices=[],
+        unlocked_slots=[],
+        replacement_candidates=[],
+        delta_valid=True,
+        delta_retry_count=0,
+        diff_result=None,
         validation_reports=[],
         route_results=[],
         presentation=None,
@@ -129,6 +151,7 @@ def build_initial_state(
         phase_log=[],
         llm_calls=[],
         stream_events=[],
+        runtime_run_id=None,
     )
 
 
@@ -136,7 +159,14 @@ def phase_update(phase: str, status: str = "completed", summary: str | None = No
     entry = {"phase": phase, "status": status, "ts": utc_now_iso()}
     if summary:
         entry["summary"] = summary
+    logger.info("[%s] %s%s", phase, status, f" — {summary}" if summary else "")
     return {"current_phase": phase, "phase_log": [entry], **extra}
+
+
+def log_step(phase: str, **kv: Any) -> None:
+    """Log structured key=value pairs for a graph step."""
+    parts = " ".join(f"{k}={v}" for k, v in kv.items())
+    logger.info("[%s] %s", phase, parts)
 
 
 def normalize_llm_call(
