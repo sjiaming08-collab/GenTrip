@@ -2,18 +2,18 @@
 
 本评测用于验证完整一轮规划链路：
 
-`constraint_extract -> geo_resolve -> poi_retrieve -> route_generate -> route_validate -> route_evaluate -> route_present`
+`constraint_extract -> planning_decision -> geo_resolve -> poi_retrieve -> route_generate -> route_validate -> route_evaluate -> route_present`
 
 评测入口：
 
 ```powershell
-.venv312\Scripts\python.exe scripts\evaluate_route_plans.py
+D:\conda3\envs\GenTrip\python.exe scripts\evaluate_route_plans.py
 ```
 
 如需保存详细结果：
 
 ```powershell
-.venv312\Scripts\python.exe scripts\evaluate_route_plans.py --json-output .runtime_logs\route_eval.json
+D:\conda3\envs\GenTrip\python.exe scripts\evaluate_route_plans.py --json-output .runtime_logs\route_eval.json
 ```
 
 ## 用例文件
@@ -21,6 +21,8 @@
 自然语言用例位于：
 
 `backend/fixtures/route_eval_cases.json`
+
+默认评测使用进程内存运行时，并关闭 LLM，因而不依赖本机 Postgres、Redis 或 DeepSeek。只有需要验证持久化链路时才传入 `--persistent`；只有单独做模型 smoke test 时才传入 `--live-llm`。
 
 当前覆盖：
 
@@ -34,7 +36,7 @@
 
 ## 合法性判断
 
-脚本会同时检查链路自身输出和独立规则：
+脚本会同时检查链路自身输出和独立规则。Plan 与 Replan 都以 `RouteJudge` 为唯一硬约束判断入口；不允许把“违规最少”的路线提升为可用路线：
 
 - `run_status == completed`
 - Top route 在 `validation_reports` 中为 `feasible=true`
@@ -44,6 +46,9 @@
 - 最后一站离开时间不晚于 `return_by`
 - 每站到达/离开顺序合法
 - 交通时间非负，且不超过 `90` 分钟
+- 营业窗口覆盖完整到店与停留区间
+- 明确排除项不出现在名称或品类中
+- 本地交通估算同时记录乐观、期望和保守时长；期望值用于硬校验，保守值用于风险提示
 
 ## 质量评分
 

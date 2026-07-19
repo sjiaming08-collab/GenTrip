@@ -3,11 +3,17 @@
 backend/.env
 *.env.local
 
+# Downloaded third-party map extracts; reproduce with scripts/download_osm_extract.py.
+data/osm/
+
 # Python
 __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+.pytest_tmp/
+.pytest-tmp/
+backend/.tmp-pytest/
 .mypy_cache/
 .ruff_cache/
 venv/

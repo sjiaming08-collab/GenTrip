@@ -2,27 +2,19 @@
 import { ref, watch } from 'vue'
 import type { FeedbackRequest, RoutePlanResult } from '../types'
 
-const props = defineProps<{
-  result?: RoutePlanResult | null
-  sessionId?: string | null
-}>()
-
-const emit = defineEmits<{
-  submitFeedback: [feedback: FeedbackRequest]
-}>()
-
+const props = defineProps<{ result?: RoutePlanResult | null; sessionId?: string | null }>()
+const emit = defineEmits<{ submitFeedback: [feedback: FeedbackRequest] }>()
 const score = ref(5)
 const comments = ref('')
 const submitted = ref(false)
+const expanded = ref(false)
 
-watch(
-  () => props.result?.route.plan_id,
-  () => {
-    submitted.value = false
-    comments.value = ''
-    score.value = 5
-  }
-)
+watch(() => props.result?.route.plan_id, () => {
+  submitted.value = false
+  expanded.value = false
+  comments.value = ''
+  score.value = 5
+})
 
 function handleSubmitFeedback() {
   if (!props.result || !props.sessionId) return
@@ -39,67 +31,22 @@ function handleSubmitFeedback() {
 
 <template>
   <section v-if="result" class="feedback-panel">
-    <h3>这次路线怎么样？</h3>
-    <p v-if="submitted" class="thanks">感谢反馈</p>
-    <form v-else class="feedback-form" @submit.prevent="handleSubmitFeedback">
-      <label>
-        评分
-        <select v-model.number="score">
-          <option v-for="s in [5, 4, 3, 2, 1]" :key="s" :value="s">
-            {{ s }} 分
-          </option>
-        </select>
-      </label>
-      <label>
-        备注
-        <textarea v-model="comments" rows="2" placeholder="例如：想减少步行、增加咖啡店" />
-      </label>
-      <button type="submit">提交反馈</button>
+    <div class="feedback-header">
+      <div>
+        <h3>路线反馈 <span>可选</span></h3>
+        <p>帮助后续路线更贴合你的偏好，不影响继续使用。</p>
+      </div>
+      <button type="button" class="toggle-button" @click="expanded = !expanded">{{ expanded ? '收起' : '评价路线' }}</button>
+    </div>
+    <p v-if="submitted" class="thanks">感谢反馈，已记录到当前会话。</p>
+    <form v-else-if="expanded" class="feedback-form" @submit.prevent="handleSubmitFeedback">
+      <label>评分<select v-model.number="score"><option v-for="s in [5, 4, 3, 2, 1]" :key="s" :value="s">{{ s }} 分</option></select></label>
+      <label>备注<textarea v-model="comments" rows="2" placeholder="例如：减少步行，增加咖啡店" /></label>
+      <button type="submit">提交评价</button>
     </form>
   </section>
 </template>
 
 <style scoped>
-.feedback-panel {
-  margin-top: 1.5rem;
-  padding: 1rem;
-  border: 1px solid #d9ebdf;
-  border-radius: 8px;
-  background: #fff;
-}
-h3 {
-  margin: 0 0 0.75rem;
-}
-.feedback-form {
-  display: grid;
-  gap: 0.75rem;
-}
-label {
-  display: grid;
-  gap: 0.35rem;
-  color: #416454;
-  font-size: 0.9rem;
-}
-select,
-textarea {
-  box-sizing: border-box;
-  width: 100%;
-  padding: 0.55rem;
-  border: 1px solid #cfe4d6;
-  border-radius: 8px;
-  font: inherit;
-}
-button {
-  justify-self: start;
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 8px;
-  background: #167b59;
-  color: #fff;
-  cursor: pointer;
-}
-.thanks {
-  margin: 0;
-  color: #167b59;
-}
+.feedback-panel{margin-top:1.25rem;padding:.9rem 1rem;border:1px solid #d9ebdf;border-radius:8px;background:#f8fcf9}.feedback-header{display:flex;align-items:center;justify-content:space-between;gap:1rem}h3{margin:0;color:#234b37;font-size:.9rem}h3 span{margin-left:.35rem;color:#789387;font-size:.7rem;font-weight:400}.feedback-header p{margin:.3rem 0 0;color:#718b7c;font-size:.75rem}.feedback-form{display:grid;gap:.75rem;margin-top:.85rem}label{display:grid;gap:.35rem;color:#416454;font-size:.9rem}select,textarea{box-sizing:border-box;width:100%;padding:.55rem;border:1px solid #cfe4d6;border-radius:8px;font:inherit;background:#fff}button{justify-self:start;padding:.5rem 1rem;border:0;border-radius:8px;background:#167b59;color:#fff;cursor:pointer}.toggle-button{padding:.45rem .7rem;border:1px solid #b9dbc5;border-radius:6px;background:#fff;color:#26704f;white-space:nowrap}.thanks{margin:.75rem 0 0;color:#167b59;font-size:.8rem}@media(max-width:520px){.feedback-header{align-items:flex-start}.feedback-header p{max-width:15rem}}
 </style>

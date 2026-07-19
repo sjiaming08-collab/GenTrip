@@ -32,6 +32,14 @@ def _fallback_presentation(best: ScoredRoute, state: GraphState) -> Presentation
         presentation.highlights.extend(
             a["message"] for a in state["assumptions"][:2]
         )
+    poi_context = {
+        str(poi.get("poi_id")): str(poi.get("ugc_summary") or "")
+        for poi in state.get("candidate_pois") or []
+    }
+    for stop in best.route.stops[:2]:
+        summary = poi_context.get(stop.poi_id)
+        if summary:
+            presentation.highlights.append(f"{stop.poi_name}: {summary}")
     return presentation
 
 
@@ -52,7 +60,13 @@ async def route_present(state: GraphState) -> dict:
         results.append(
             RoutePlanResult(
                 route=item.route,
-                source=RouteSource.DEGRADED if state.get("degraded") else RouteSource.COLD_GENERATED,
+                source=(
+                    RouteSource.DEGRADED if state.get("degraded")
+                    else RouteSource.BUNDLE_HIT if state.get("plan_path") == "hot" and float(state.get("bundle_match_score") or 0) >= 1.0
+                    else RouteSource.BUNDLE_ADAPTED if state.get("plan_path") == "hot"
+                    else RouteSource.COLD_GENERATED
+                ),
+                bundle_id=state.get("matched_bundle_id") if state.get("plan_path") == "hot" else None,
                 rank=item.rank,
                 scores=RouteScores(
                     execution=item.execution_score,
@@ -86,6 +100,8 @@ async def route_present(state: GraphState) -> dict:
         route_results=[r.model_dump(mode="json") for r in results],
         presentation=presentation.model_dump(mode="json"),
         run_status="completed",
+        planning_outcome="route_ready",
+        constraints=state.get("original_constraints") or state.get("constraints"),
         llm_calls=[llm_call],
     )
     update["phase_log"][0].update({

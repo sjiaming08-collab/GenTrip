@@ -1,16 +1,107 @@
 """API DTO。"""
 
-from typing import Optional
+from datetime import datetime
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
 
+class RegisterRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=12, max_length=128)
+    display_name: str = Field(default="", max_length=80)
+    tenant_name: str = Field(default="", max_length=80)
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=128)
+    tenant_id: Optional[str] = Field(default=None, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+class AuthUserResponse(BaseModel):
+    user_id: str
+    email: str
+    display_name: str
+
+
+class AuthTenantResponse(BaseModel):
+    tenant_id: str
+    name: str
+    role: str
+
+
+class AuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: AuthUserResponse
+    tenant: AuthTenantResponse
+
+
+class WorkspaceListResponse(BaseModel):
+    workspaces: list[AuthTenantResponse] = Field(default_factory=list)
+
+
+class SwitchWorkspaceRequest(BaseModel):
+    tenant_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+class TenantMemberResponse(BaseModel):
+    user_id: str
+    email: str
+    display_name: str
+    role: Literal["owner", "member"]
+
+
+class TenantMemberAddRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    role: Literal["owner", "member"] = "member"
+
+
+class TenantMemberRoleRequest(BaseModel):
+    role: Literal["owner", "member"]
+
+
+class TenantMemberListResponse(BaseModel):
+    members: list[TenantMemberResponse] = Field(default_factory=list)
+
+
+class AuditEventResponse(BaseModel):
+    event_id: int
+    tenant_id: str
+    actor_user_id: Optional[str] = None
+    action: str
+    target_type: str
+    target_id: Optional[str] = None
+    data: dict = Field(default_factory=dict)
+    created_at: str
+
+
+class AuditEventListResponse(BaseModel):
+    events: list[AuditEventResponse] = Field(default_factory=list)
+
+
+class AuthSessionResponse(BaseModel):
+    session_id: str
+    tenant_id: str
+    created_at: str
+    expires_at: str
+    revoked_at: Optional[str] = None
+    current: bool = False
+
+
+class AuthSessionListResponse(BaseModel):
+    sessions: list[AuthSessionResponse] = Field(default_factory=list)
+
+
 class PlanRequest(BaseModel):
     query: str = Field(min_length=1)
+    tenant_id: str = Field(default="default", min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     user_id: Optional[str] = None
     lat: Optional[float] = None
     lng: Optional[float] = None
     session_id: Optional[str] = None
+    idempotency_key: Optional[str] = Field(default=None, min_length=1, max_length=128)
 
 
 class AgentReplyMetaResponse(BaseModel):
@@ -21,8 +112,14 @@ class AgentReplyMetaResponse(BaseModel):
     next_suggested_user_moves: list[str] = Field(default_factory=list)
     phase_log: list[dict] = Field(default_factory=list)
     llm_calls: list[dict] = Field(default_factory=list)
+    tool_calls: list[dict] = Field(default_factory=list)
+    data_sources: list[str] = Field(default_factory=list)
+    degraded_reasons: list[str] = Field(default_factory=list)
     token_usage: dict = Field(default_factory=dict)
     debug_trace_id: Optional[str] = None
+    planning_decision: Optional[dict] = None
+    pending_change: Optional[dict] = None
+    rejected_change: Optional[dict] = None
 
 
 class PlanResponse(BaseModel):
@@ -35,6 +132,7 @@ class PlanResponse(BaseModel):
     current_phase: str
     session_id: Optional[str] = None
     reply_type: str = "route"
+    planning_outcome: str = "pending"
     structured: list[dict] = Field(default_factory=list)
     meta: AgentReplyMetaResponse = Field(default_factory=AgentReplyMetaResponse)
 
@@ -55,6 +153,7 @@ class RunStatusResponse(BaseModel):
 
 class SessionResponse(BaseModel):
     session_id: str
+    tenant_id: str = "default"
     title: str = ""
     turn_count: int
     mode: str
@@ -65,15 +164,18 @@ class SessionResponse(BaseModel):
     recent_turns: list[dict] = Field(default_factory=list)
     turns: list[dict] = Field(default_factory=list)
     latest_response: Optional[dict] = None
+    pending_change: Optional[dict] = None
+    rejected_change: Optional[dict] = None
 
 
 class SessionListItemResponse(BaseModel):
     session_id: str
+    tenant_id: str = "default"
     title: str = ""
     dialog_summary: str = ""
     turn_count: int = 0
     route_count: int = 0
-    updated_at: str | None = None
+    updated_at: datetime | None = None
 
 
 class SessionListResponse(BaseModel):
@@ -82,10 +184,12 @@ class SessionListResponse(BaseModel):
 
 class SessionUpdateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=80)
+    tenant_id: str = Field(default="default", min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 class FeedbackRequest(BaseModel):
     session_id: str
+    tenant_id: str = Field(default="default", min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     action: str  # "confirm" | "reject_poi" | "rate" | "overturn_assumption"
     poi_id: Optional[str] = None
     route_id: Optional[str] = None

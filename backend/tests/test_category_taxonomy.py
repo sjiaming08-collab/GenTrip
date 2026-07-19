@@ -43,5 +43,14 @@ def test_compute_final_leaves_chinese():
     assert leaves == {"本帮菜", "火锅", "小吃快餐", "川菜", "粤菜", "烧烤"}
 
 
+def test_compute_final_leaves_leisure():
+    leaves = compute_final_leaves(
+        domains=[IntentDomain.LEISURE.value],
+        preferred_cuisines=None,
+    )
+
+    assert {"按摩足疗", "体育运动", "电玩游戏", "亲子游乐"} <= leaves
+
+
 def test_widen_sichuan_to_chinese():
     assert widen_preferred_to_parent_groups(["川菜"]) == ["中餐"]

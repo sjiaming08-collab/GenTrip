@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgis/postgis:16-3.4
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-gentrip}
       POSTGRES_USER: ${POSTGRES_USER:-gentrip}
@@ -30,12 +30,34 @@ services:
   api:
     build:
       context: ./backend
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-gentrip}:${POSTGRES_PASSWORD:-gentrip}@postgres:5432/${POSTGRES_DB:-gentrip}
       REDIS_URL: redis://redis:6379/0
       LLM_ENABLED: ${LLM_ENABLED:-false}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-deepseek-v4-pro}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      RUNTIME_EXECUTION_MODE: redis_stream
+      RUNTIME_QUEUE_MAX_ATTEMPTS: ${RUNTIME_QUEUE_MAX_ATTEMPTS:-3}
+      RUNTIME_QUEUE_DEAD_LETTER_STREAM: ${RUNTIME_QUEUE_DEAD_LETTER_STREAM:-gentrip:plan-runs:dlq}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      TENANT_API_KEYS_JSON: ${TENANT_API_KEYS_JSON:-}
+      # Local Compose defaults to the documented anonymous workspace mode.
+      # Production must set this false and enable AUTH_ENABLED or API keys.
+      ALLOW_INSECURE_TENANT_ID: ${ALLOW_INSECURE_TENANT_ID:-true}
+      AUTH_ENABLED: ${AUTH_ENABLED:-false}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
+      AUTH_ACCESS_TOKEN_MINUTES: ${AUTH_ACCESS_TOKEN_MINUTES:-60}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      AUTH_ALLOW_REGISTRATION: ${AUTH_ALLOW_REGISTRATION:-true}
+      AUTH_LOGIN_RATE_LIMIT_ENABLED: ${AUTH_LOGIN_RATE_LIMIT_ENABLED:-true}
+      AUTH_LOGIN_MAX_ATTEMPTS: ${AUTH_LOGIN_MAX_ATTEMPTS:-5}
+      AUTH_LOGIN_WINDOW_SECONDS: ${AUTH_LOGIN_WINDOW_SECONDS:-900}
+      TRAVEL_TIME_PROVIDER: ${TRAVEL_TIME_PROVIDER:-mock}
+      TRAVEL_TIME_HTTP_URL: ${TRAVEL_TIME_HTTP_URL:-}
+      TRAVEL_TIME_TIMEOUT_SEC: ${TRAVEL_TIME_TIMEOUT_SEC:-2}
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:
@@ -49,6 +71,46 @@ services:
       timeout: 5s
       retries: 12
 
+  worker:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    command: ["python", "-m", "src.worker"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gentrip}:${POSTGRES_PASSWORD:-gentrip}@postgres:5432/${POSTGRES_DB:-gentrip}
+      REDIS_URL: redis://redis:6379/0
+      LLM_ENABLED: ${LLM_ENABLED:-false}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-v4-pro}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      RUNTIME_EXECUTION_MODE: redis_stream
+      RUNTIME_QUEUE_MAX_ATTEMPTS: ${RUNTIME_QUEUE_MAX_ATTEMPTS:-3}
+      RUNTIME_QUEUE_DEAD_LETTER_STREAM: ${RUNTIME_QUEUE_DEAD_LETTER_STREAM:-gentrip:plan-runs:dlq}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      TENANT_API_KEYS_JSON: ${TENANT_API_KEYS_JSON:-}
+      AUTH_ENABLED: ${AUTH_ENABLED:-false}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
+      TRAVEL_TIME_PROVIDER: ${TRAVEL_TIME_PROVIDER:-mock}
+      TRAVEL_TIME_HTTP_URL: ${TRAVEL_TIME_HTTP_URL:-}
+      TRAVEL_TIME_TIMEOUT_SEC: ${TRAVEL_TIME_TIMEOUT_SEC:-2}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      api:
+        condition: service_healthy
+
 volumes:
   postgres-data:
   redis-data:
+  prometheus-data:

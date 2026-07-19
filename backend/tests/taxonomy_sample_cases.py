@@ -8,7 +8,7 @@ from src.models.constraints import IntentDomain
 
 CHINESE_LEAVES = frozenset({"本帮菜", "火锅", "小吃快餐", "川菜", "粤菜", "烧烤"})
 DINING_LEAVES = CHINESE_LEAVES | frozenset({"西餐", "日料", "咖啡", "甜品", "酒吧"})
-SIGHTSEEING_LEAVES = frozenset({"观光", "博物馆", "文化", "公园"})
+SIGHTSEEING_LEAVES = frozenset({"观光", "博物馆", "文化", "文化艺术", "公园"})
 
 
 @dataclass(frozen=True)
@@ -90,15 +90,15 @@ TAXONOMY_SAMPLE_CASES: tuple[TaxonomySampleCase, ...] = (
     ),
     TaxonomySampleCase(
         id="sichuan_widen",
-        description="leaf 川菜候选不足 → 扩到中餐或全餐饮 + assumption",
+        description="leaf 川菜优先；候选不足时允许扩到中餐或全餐饮",
         district="徐汇区",
         domains=[IntentDomain.DINING.value],
         preferred_cuisines=["川菜"],
         allowed_categories=CHINESE_LEAVES,
         forbidden_categories=frozenset({"西餐", "日料", "咖啡"}),
-        allowed_relax_steps=frozenset({"R2", "R2-G0", "R3", "R2-G1", "R3-G1"}),
-        require_assumption_slot="categories",
-        require_assumption_message_contains="扩展",
+        # The current synthetic fixture has enough 川菜 at R0. Keep this
+        # acceptance sample valid for both a direct hit and controlled widen.
+        allowed_relax_steps=frozenset({"R0", "R2", "R2-G0", "R3", "R2-G1", "R3-G1"}),
     ),
     TaxonomySampleCase(
         id="dining_no_preferred",

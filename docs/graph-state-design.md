@@ -1,11 +1,11 @@
 # GraphState 设计 — Plan Run 与热/冷路径
 
 > 本文档定义单 Agent Plan 流程下的 **GraphState**、**六段式流水线**、**热路径（RouteBundle 向量检索）** 与 **冷路径（全量生成评估）**。  
-> 对齐原则：**零澄清、输入即推荐、单 Agent、Top-K 输出**。
+> 对齐原则：**推荐优先、可行性优先、单 Agent、Top-K 输出**。
 
-## 0. 当前实现阶段（2026-06-28）
+## 0. 当前实现阶段（2026-07-18）
 
-当前实现为 **P1 冷路径 + GeoScope**，不是完整热/冷双路径：`constraint_extract → geo_resolve → poi_retrieve → route_generate → route_validate → route_evaluate → route_present`。`geo_scope` 已进入 GraphState L2，`RouteBundle`、`auto_relax` 重试子图和 Replan 仍是后续阶段。
+当前实现为 **Planner V2 + GeoScope + 热/冷双路径**：`constraint_extract` 后先执行 `planning_decision`；所有生成路线、缓存路线和 Replan 提案统一通过 `RouteJudge`。交通字段携带乐观/期望/保守区间，当前 provider 为本地 mock，后续可替换真实地图适配器而不改变图状态契约。
 
 ---
 
@@ -19,6 +19,7 @@
 └────────────────────────────────────────────────────────────────────────┘
 
 [1] constraint_extract     提取 + 补全约束（位置、想玩什么、几点回家…）→ assumptions
+    planning_decision      用停留/交通下界判断是否值得继续检索
 [2] poi_retrieve           按约束召回候选 POI
 [3] route_generate         在 POI 上生成多条候选路线（M 条）
 [4] route_validate         硬约束校验（合法性 / 可执行性）
@@ -36,9 +37,9 @@
 
 **Run 不变量：**
 
-- 每条用户输入必须产出 **至少 1 条** 推荐路线（Top-K 默认 K=1～3）。
-- **永不** `waiting_user` / Clarify。
-- Run 成功：`run_status == "completed"` 且 `route_results` 非空。
+- 只有通过 `RouteJudge` 的路线才能进入 `route_results`。
+- 缺少不可安全推断的关键前提时允许 `clarification_required`；确定不可行时返回 `infeasible`。
+- Run 可正常完成但不返回路线：`run_status == "completed"`，由 `planning_outcome` 表达业务结果。
 
 ---
 
@@ -189,6 +190,10 @@ GraphState **不是**专门给条件判断用的，而是 **节点间传递数�
 | `assumptions` | `list[Assumption]` | `constraint_extract` | 推断假设，对用户可见 |
 | `constraint_embedding` | `list[float] \| null` | `constraint_extract` | 供 bundle_search |
 | `relaxed_constraints` | `list[str]` | `route_validate`, `auto_relax` | 自动放宽项 |
+| `planning_outcome` | `str` | planning/replan 节点 | 规划业务结果，不与运行状态混用 |
+| `planning_decision` | `PlanningDecision \| null` | `planning_decision` | 前置时长区间、原因和可选动作 |
+| `pending_change` | `dict \| null` | `validate_delta` | 未通过校验、尚未提交的 Replan 操作 |
+| `rejected_change` | `dict \| null` | `render_diff` | 最近一次拒绝提交的变更快照 |
 
 **Constraints（核心字段）：**
 
@@ -434,7 +439,7 @@ class GraphState(TypedDict, total=False):
 - [ ] 输出为 `route_results` Top-K，不是单条 `route_result`
 - [ ] `assumptions` 在 present 阶段带给用户
 - [ ] 冷路径结果可异步写入 RouteBundle
-- [ ] 无 Clarify / waiting 状态
+- [ ] `clarification_required` / `infeasible` 是否作为业务结果而非运行错误
 - [ ] L1 字段 Run 内不被修改
 
 ---

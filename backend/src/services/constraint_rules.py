@@ -36,8 +36,9 @@ EXCLUDED_CATEGORY_KEYWORDS: list[tuple[str, list[str]]] = [
 _NEGATION_MARKERS = ("不想去", "不要去", "不去", "别去", "不要", "不想", "跳过")
 
 _DINING_TRIGGER = ("吃", "美食", "餐", "饭", "逛吃", "料理", "聚餐", "宴请", "午餐", "晚餐")
-_SIGHTSEEING_TRIGGER = ("逛", "玩", "游", "观光", "打卡", "展览", "博物馆", "公园", "景点", "逛逛")
+_SIGHTSEEING_TRIGGER = ("逛", "玩", "游", "观光", "打卡", "看展", "展览", "博物馆", "公园", "景点", "逛逛")
 _SHOPPING_TRIGGER = ("买", "购物", "逛街买", "商场")
+_LEISURE_TRIGGER = ("按摩", "足疗", "推拿", "SPA", "美容", "健身", "攀岩", "游泳", "羽毛球", "网球", "保龄球", "滑雪", "电玩", "游戏", "电竞", "桌游", "VR", "密室", "KTV", "亲子")
 _CHINESE_HOURS = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
 
 
@@ -79,6 +80,9 @@ def detect_budget(query: str) -> int | None:
 
 
 def detect_minutes(query: str) -> int | None:
+    queue_duration = re.search(r"\u6392\u961f.{0,12}?\d+\s*\u5206\u949f", query)
+    if queue_duration:
+        query = query.replace(queue_duration.group(0), "")
     if "半天" in query:
         return 240
     match = re.search(r"(\d+)\s*(?:小时|个小时|h)", query, re.I)
@@ -98,10 +102,13 @@ def detect_return_by(query: str) -> str | None:
 
 
 def detect_start_at(query: str) -> str | None:
-    explicit = re.search(r"(?:从|在)?\s*(\d{1,2})\s*(?:点|:)(\d{2})?\s*(?:出发|开始|以后|之后)", query)
+    explicit = re.search(r"(?:(上午|早上|中午|下午|午后|晚上|夜间)\s*)?(?:从|在)?\s*(\d{1,2})\s*(?:点|:)(\d{2})?\s*(?:出发|开始|以后|之后)", query)
     if explicit:
-        hour = int(explicit.group(1))
-        minute = int(explicit.group(2) or 0)
+        label = explicit.group(1)
+        hour = int(explicit.group(2))
+        minute = int(explicit.group(3) or 0)
+        if label in {"下午", "午后", "晚上", "夜间"} and 1 <= hour <= 11:
+            hour += 12
         if 0 <= hour <= 23 and 0 <= minute <= 59:
             return f"{hour:02d}:{minute:02d}"
 
@@ -129,17 +136,41 @@ def detect_queue_tolerance_minutes(query: str) -> int | None:
     return 30 if "排队半小时" in query else None
 
 
+def positive_domain_query(query: str) -> str:
+    positive_query = query
+    excluded = set(detect_excluded_categories(query))
+    for category, keywords in EXCLUDED_CATEGORY_KEYWORDS:
+        if category in excluded:
+            for keyword in keywords:
+                positive_query = positive_query.replace(keyword, "")
+    return positive_query
+
+
+def has_domain_signal(query: str) -> bool:
+    positive_query = positive_domain_query(query)
+    return any(k in positive_query for k in (_DINING_TRIGGER + _SIGHTSEEING_TRIGGER + _SHOPPING_TRIGGER + _LEISURE_TRIGGER))
+
+
 def detect_domains(query: str) -> list[IntentDomain]:
     """从 query 推断 POI 候选涉及的意图域（可多选，无 MIXED）。"""
-    domains: list[IntentDomain] = []
-    preferred = detect_preferred_cuisines(query)
+    positive_query = positive_domain_query(query)
 
-    if preferred or any(k in query for k in _DINING_TRIGGER):
+    domains: list[IntentDomain] = []
+    preferred = detect_preferred_cuisines(positive_query)
+
+    if preferred or any(k in positive_query for k in _DINING_TRIGGER):
         domains.append(IntentDomain.DINING)
-    if any(k in query for k in _SIGHTSEEING_TRIGGER):
+    shopping_signal = any(k in positive_query for k in _SHOPPING_TRIGGER)
+    sightseeing_signal = any(k in positive_query for k in _SIGHTSEEING_TRIGGER)
+    leisure_signal = any(k in positive_query for k in _LEISURE_TRIGGER)
+    if shopping_signal or leisure_signal:
+        sightseeing_signal = any(k in positive_query for k in _SIGHTSEEING_TRIGGER if k not in {"逛", "逛逛", "玩"})
+    if sightseeing_signal:
         domains.append(IntentDomain.SIGHTSEEING)
-    if any(k in query for k in _SHOPPING_TRIGGER):
+    if shopping_signal:
         domains.append(IntentDomain.SHOPPING)
+    if leisure_signal:
+        domains.append(IntentDomain.LEISURE)
 
     if not domains:
         domains = [IntentDomain.SIGHTSEEING]
@@ -184,7 +215,7 @@ def _memory_positive_int(state: GraphState, slot: str) -> int | None:
 
 
 def _query_has_domain_signal(query: str) -> bool:
-    return any(k in query for k in (_DINING_TRIGGER + _SIGHTSEEING_TRIGGER + _SHOPPING_TRIGGER))
+    return has_domain_signal(query)
 
 
 def _memory_domains(state: GraphState) -> list[IntentDomain] | None:

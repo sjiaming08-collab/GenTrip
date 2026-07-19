@@ -5,9 +5,9 @@
 
 ---
 
-## 0. 当前实现阶段（2026-06-28）
+## 0. 当前实现阶段（2026-07-18）
 
-当前代码处于 **P1：GeoScope 驱动的冷路径 Plan Run**：主链路为 `constraint_extract → geo_resolve → poi_retrieve → route_generate → route_validate → route_evaluate → route_present`。`RouteBundle` 热路径仍是 P2 目标，不应早于 GeoScope、POI 召回质量和路线生成质量稳定之前实现。
+当前代码已进入 **Planner V2**：Plan 在检索前执行 `planning_decision`，Plan/Replan/RouteBundle 统一由 `RouteJudge` 做硬约束判断，交通时间使用本地 Haversine mock 的乐观/期望/保守区间。完整 Plan 路径为：`constraint_extract → planning_decision → route_bundle_search → (hit: route_validate → bundle_rerank | miss: geo_resolve → poi_retrieve → route_generate → route_validate → route_evaluate → route_bundle_ingest) → route_present`。Replan 使用有界候选提案，只有通过统一校验后才原子提交。
 
 地点约束不再建议由 `constraint_extract` 直接硬输出固定 `district`。推荐链路是：用户地点表达 → `GeoResolver` → `GeoScope` → `poi_retrieve`。`district` 仍保留为兼容字段，但只是 `GeoScope` 的一种退化形式。
 ## 1. 设计目标与边界
@@ -15,17 +15,17 @@
 GenTrip 是 **单 Agent、推荐优先** 的本地出行规划系统：
 
 - **一个 LangGraph Agent** 负责 Plan Run：**约束提取 → 地点解析 → POI 检索 → 多候选路线 → 校验 → 评估 → Top-K 输出**；P1 先稳定 GeoScope 冷路径，P2 再接入 RouteBundle 热路径。
-- 用户输入 **任意模糊问题**（如「附近有什么好玩的」「徐汇逛吃」），系统 **必须直接给出可执行路线**，不向用户追问预算、时长、人数。
+- 用户输入模糊问题时优先用可见假设直接推荐；只有缺少无法安全推断的关键前提时才返回结构化澄清。
 - 用户往往 **不知道自己具体要什么**——系统的职责是 **主动推荐**，而不是收集完整表单后再规划。
 - 路线输出后，用户可通过自然语言 **修订**（换店、跳过、加站）；Agent 在已有上下文上增量 Replan，而非每轮从零开始。
 - 所有 LLM 输出必须 **结构化**（意图、路线、假设说明），便于校验、展示与后续 Replan。
 
-### 1.1 核心设计原则：零澄清、推荐即答
+### 1.1 核心设计原则：推荐优先、可行性优先
 
 | 原则 | 含义 |
 |------|------|
-| **No Clarify** | 不进入「请问您的预算是多少？」类对话；缺失约束由系统推断 |
-| **Always Plan** | 每条用户输入（除明显非出行意图）都触发一次 Plan 或 Replan Run，并产出路线 |
+| **Default Before Clarify** | 预算、时长、人数等可安全补全项优先推断并写入 assumptions |
+| **Truthful Outcome** | 每条出行输入都执行 Plan/Replan，但只有通过硬约束校验的路线才能提交 |
 | **Assumption First** | 推断出的默认值、画像补全、场景模板必须写入 `assumptions[]`，对用户可见 |
 | **Recommend, Don't Ask** | 约束冲突时不追问，而是自动放宽或返回 **Top-K 条评估最高的路线** |
 | **Geo First, Hot Later** | P1 先用 GeoScope 稳定地点解析与 POI 召回；P2 再用线下 RouteBundle 跳过全量生成/评估 |
@@ -72,7 +72,7 @@ GenTrip 是 **单 Agent、推荐优先** 的本地出行规划系统：
   [5] 用户新输入（修订 / 新需求）──► 回到 [1]
 ```
 
-**关键变化：** 去掉 Clarify 分支。用户第一句话就必须能收到 **RouteReply**（含 `assumptions`）。
+**关键变化：** 澄清不再是默认对话模式；运行结果显式区分 `route_ready / clarification_required / infeasible / change_applied / change_rejected`。
 
 ### 2.2 单轮内 vs 跨轮
 
@@ -94,13 +94,13 @@ GenTrip 是 **单 Agent、推荐优先** 的本地出行规划系统：
 | 4 | User Profile | 常去徐汇、偏爱日料、人均 150 |
 | 5 | 场景默认模板 | 逛吃：默认 3h / 人均 150 / 3 站；亲子：默认 5h / 2 站 |
 
-补全在 **`constraint_extract`** 节点完成，输出 `Constraints` + `assumptions[]`，**永不向用户提问**。  
+补全在 **`constraint_extract`** 节点完成，输出 `Constraints` + `assumptions[]`。只有地点或可用时间等关键前提无法安全推断时，`planning_decision` 才返回结构化澄清。
 支持 **`return_by`（几点回家）** 与 **`time_budget_minutes`** 并存或二选一。
 
 ### 2.4 运行时优先级
 
-1. **必须出路线**（宁可带假设，不可空回复）
-2. **安全与可行性**（营业、距离不可行 → 自动换 POI 或放宽约束，而非追问）
+1. **安全与可行性**（营业、预算、时间、排除项不满足时不得伪造成功路线）
+2. **推荐优先**（可安全推断时带 assumptions 直接规划）
 3. **用户本轮显式指令**（「不要火锅」覆盖画像默认）
 4. **已确认路线段**（Replan 时不可擅自改动）
 5. **User Profile 与场景默认**（推荐依据，须在 UI 展示）
@@ -130,7 +130,7 @@ Node Pipeline（节点流水线，同一 StateGraph 内）
 - 有 `current_route` 且 utterance 含修订语义 → **Replan**
 - 明显非出行 → **Reject**
 
-**Run Orchestrator** 在 Plan/Replan 下启动；Plan **必须产出 Top-K 路线**；优先热路径，不因约束缺失而提前 END 或 Clarify。
+**Run Orchestrator** 在 Plan/Replan 下启动；优先产出通过校验的 Top-K 路线。前置下界已经不可行，或检索后所有候选都违反硬约束时，返回可解释的非路线结果。
 
 ### 3.2 Plan Run 六段式 + 热/冷路径
 
@@ -138,7 +138,7 @@ Node Pipeline（节点流水线，同一 StateGraph 内）
 
 | 段 | 节点 | 职责 |
 |----|------|------|
-| 1 | `constraint_extract` | 提取位置、想玩什么、几点回家等；规则/LLM；补全 assumptions |
+| 1 | `constraint_extract` + `planning_decision` | 提取约束并用交通/停留下界做前置可行性判断 |
 | 2 | `poi_retrieve` | 按约束召回候选 POI |
 | 3 | `route_generate` | 生成 **M 条**候选路线（非单条） |
 | 4 | `route_validate` | 硬约束：时长、预算、营业、可达性 |
@@ -160,7 +160,7 @@ constraint_extract
 
 **耗时与线下化：** 最耗时为 [3] 多路线生成、[4] 校验（地图 API）、[5] 全量评估。RouteBundle 线下预存已 optimize、已校验、已评分的路线；线上 HOT 仅做轻量复验与 rerank。详见 [`graph-state-design.md`](graph-state-design.md)。
 
-**`auto_relax`：** 冷路径 `valid_routes` 为空时，自动放宽约束并重试（最多 1 轮），仍必须输出路线。
+**`auto_relax`：** 冷路径 `valid_routes` 为空时最多重试 1 轮；只允许放宽 assumptions 产生的默认预算、时长或区域，禁止修改用户明确的 `return_by`、排除项和已确认站点。仍不可行时返回 `infeasible`，不提升非法路线。
 
 **Top-K 输出：** 评估完成后取 `final_score` 最高的 1～3 条；分数接近时可返 2 条供用户点选，**不是澄清问答**。
 
@@ -170,9 +170,9 @@ constraint_extract
 replan_parse（删除/替换/追加/改偏好）
     → lock_confirmed_stops
     → partial_retrieval
-    → local_optimize
-    → validate_delta
-    → render_diff
+    → local_optimize（最多 8 个提案）
+    → validate_delta（统一 RouteJudge）
+    → render_diff（通过则原子提交；失败则保留原路线）
 ```
 
 ### 3.4 编排中的中断与恢复
@@ -180,10 +180,10 @@ replan_parse（删除/替换/追加/改偏好）
 | 事件 | 行为 |
 |------|------|
 | 用户中途发新消息 | 取消当前 Run，Turn Orchestrator 重新路由 |
-| 工具超时 | 标注 `degraded=true`，用模板/规则兜底，**仍输出路线** |
+| 工具超时 | 标注 `degraded=true`；只有规则兜底路线通过 RouteJudge 才能输出 |
 | LLM 结构化解析失败 | 重试 1 次 → 规则 intent + 默认场景模板 → 继续 Plan |
-| 校验失败 | `auto_relax` 或 `conflict_compose`（两套推荐），**不 Clarify** |
-| 检索结果为空 | 扩大检索半径 / 放宽品类 / 换热门 POI 模板，**仍输出路线** |
+| 校验失败 | 仅放宽系统假设并重试一次；仍失败则返回 `infeasible` 或 `change_rejected` |
+| 检索结果为空 | 扩大系统推断的范围后重试；仍为空则返回 `no_candidate`/不可行说明 |
 
 ---
 
@@ -235,8 +235,8 @@ replan_parse（删除/替换/追加/改偏好）
 ### 5.1 提示词分层结构
 
 ```
-L0: System Contract     — 单 Agent 角色；**禁止向用户提问**；必须输出路线
-L1: Mode Template       — Plan / Replan / Adapt（无 Clarify）
+L0: System Contract     — 单 Agent；显式约束优先；不可把非法路线描述为成功
+L1: Mode Template       — Plan / Replan / Adapt / PlanningReply
 L2: Task Payload        — 意图、assumptions、候选 POI、画像摘要
 L3: Dialog Window        — 最近 K 轮 + 当前 utterance
 ```
@@ -255,7 +255,7 @@ L3: Dialog Window        — 最近 K 轮 + 当前 utterance
 ### 5.3 结构化输出约束
 
 - 主输出为 **`route_results`（Top-K 列表）**，每条含 `route` + `scores` + `assumptions`。
-- **没有 `ClarifyQuestion` schema**。
+- 非路线结果使用 `PlanningDecision` + `Presentation`，不生成自由文本追问协议。
 
 ### 5.4 缓存复用
 
@@ -266,7 +266,7 @@ L3: Dialog Window        — 最近 K 轮 + 当前 utterance
 | POI 检索 Cache | 同 district+tags | 位置变化 |
 | Tool Result | 逆地理、POI 详情 | ttl |
 
-Plan 模式可积极复用 Retrieval Cache；**不存在 Clarify 缓存**。
+Plan 模式可积极复用 Retrieval Cache；前置判断和最终 RouteJudge 必须按本轮显式约束重新执行。
 
 ---
 
@@ -281,7 +281,7 @@ Plan 模式可积极复用 Retrieval Cache；**不存在 Clarify 缓存**。
 | **Dialog Memory** | 最近轮次 | L3 摘要 |
 | **Confirmed / Rejected** | 用户确认或拒绝的 POI | L2 高优先级 |
 
-### 6.2 SessionState（去掉 clarifying）
+### 6.2 SessionState（持久化规划结果）
 
 ```
 SessionState:
@@ -384,15 +384,18 @@ COMPLETED  REPLANNING  PLANNING（重新规划）
 | **MultiRouteReply** | Top-K≥2 | 多条方案卡片，点选即可 |
 | **DiffReply** | Replan 成功 | 改了哪些站 |
 | **DegradedReply** | 工具/LLM 降级 | 仍有路线 + 原因 |
+| **ClarificationReply** | 缺少不可安全推断的地点或时间 | 结构化补充项，不提交路线 |
+| **InfeasibleReply** | 当前硬约束下无合法路线 | 原因 + 可执行调整建议 |
 | **RejectReply** | 非出行意图 | 简短引导 |
 
-**已移除：** ClarifyReply、AssumedRouteReply（假设已合并进 RouteReply）。
+`AssumedRouteReply` 已合并进 RouteReply；澄清和不可行是明确业务结果，不是运行失败。
 
 ### 8.2 AgentReply envelope
 
 ```
 AgentReply:
-  reply_type: "route" | "multi_route" | "diff" | "degraded_route" | "reject"
+  reply_type: "route" | "multi_route" | "diff" | "degraded_route" | "clarification" | "infeasible" | "reject"
+  planning_outcome: "route_ready" | "clarification_required" | "infeasible" | "change_applied" | "change_rejected" | ...
   structured: list[RoutePlanResult]   # Top-K
   presentation:
     title: str                    # 「为您推荐…」
@@ -404,6 +407,8 @@ AgentReply:
     assumptions: list[str]
     relaxed_constraints: list
     degraded: bool
+    planning_decision: dict | null
+    pending_change: dict | null
     next_suggested_user_moves: list[str]   # 修订示例，非澄清问题
 ```
 
@@ -418,14 +423,14 @@ phase: evaluating     → 「正在评估最优方案…」
 phase: complete       → Top-K 整包
 ```
 
-### 8.4 错误与恢复（仍不给澄清题）
+### 8.4 错误与恢复
 
 | 失败 | 用户可见 |
 |------|---------|
 | intent 解析失败 | 按「附近推荐」默认场景出路线 + assumptions |
-| 检索为空 | 扩大范围后的热门路线 + assumption 说明 |
-| 校验不可行 | auto_relax 后仍输出 Top-K 或 degraded_route |
-| LLM 超时 | DegradedReply（模板/规则路线） |
+| 检索为空 | 只放宽系统假设后重试；仍为空则返回不可行说明 |
+| 校验不可行 | auto_relax 后返回 `infeasible`，不输出非法候选 |
+| LLM 超时 | 规则路线通过 RouteJudge 后输出；否则返回不可行说明 |
 
 ---
 
@@ -439,7 +444,7 @@ phase: complete       → Top-K 整包
 | 2 | 「第二家换成咖啡」 | Replan | DiffReply：1 站替换 |
 | 3 | 「预算总共 200 以内」 | Replan | DiffReply：换低价 POI；更新 assumptions |
 
-**无 Clarify Turn。**
+该示例中不需要 Clarify；只有关键前提不可安全推断时才进入结构化补充。
 
 ---
 
@@ -471,7 +476,9 @@ phase: complete       → Top-K 整包
 - [ ] 冷路径是否异步回填 RouteBundle？
 - [ ] `constraint_extract` 是否含 return_by / assumptions？
 - [ ] `assumptions` 是否在 UI 可见且可被用户一句话推翻？
-- [ ] 校验失败是否走 auto_relax / 两套推荐，而非追问？
+- [ ] 校验失败是否只放宽 assumptions，并禁止提升非法路线？
+- [ ] `planning_outcome` 是否与 `run_status` 分离？
+- [ ] Replan 失败是否保留原路线并写入 `pending_change`？
 - [ ] Replan 是否锁定 confirmed stops？
 - [ ] 是否保持 **单 Agent + 两层编排**？
 - [ ] 流式是否只 narrate 进度，JSON 整包交付？
@@ -482,7 +489,7 @@ phase: complete       → Top-K 整包
 
 | 本文档（Agent 运行时） | 工程 README |
 |----------------------|-------------|
-| 单 Agent、零澄清、推荐优先 | API、MQ、DB 部署 |
+| 单 Agent、推荐优先、可行性优先 | API、MQ、DB 部署 |
 | Plan 六段 + 热/冷路径 | [`graph-state-design.md`](graph-state-design.md) |
 | RouteBundle 线下索引 | 工程 README（数据层） |
 

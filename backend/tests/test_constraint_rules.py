@@ -42,6 +42,10 @@ def test_detect_domains():
     assert detect_domains("静安购物") == [IntentDomain.SHOPPING]
     assert detect_domains("徐汇逛吃") == [IntentDomain.DINING, IntentDomain.SIGHTSEEING]
     assert detect_domains("想吃中餐") == [IntentDomain.DINING]
+    assert detect_domains("我不去博物馆了，就是吃点东西，你重新为我规划一下呢") == [IntentDomain.DINING]
+    assert detect_domains("徐汇区按摩足疗后去攀岩") == [IntentDomain.LEISURE]
+    assert detect_domains("黄浦区玩电玩") == [IntentDomain.LEISURE]
+    assert detect_domains("徐汇区逛商场") == [IntentDomain.SHOPPING]
 
 
 def test_detect_preferred_cuisines():

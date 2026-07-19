@@ -17,16 +17,35 @@ async def geo_resolve(state: GraphState) -> dict:
         user_lng=state.get("user_lng"),
     )
 
+    resolved_constraints = dict(constraints)
+    district_corrected = bool(
+        scope.district
+        and scope.source != "default"
+        and scope.confidence >= 0.7
+        and scope.district != constraints.get("district")
+    )
+    if district_corrected:
+        resolved_constraints["district"] = scope.district
+
     update = phase_update(
         "geo_resolve",
         summary=f"scope={scope.scope_type}:{scope.resolved_name}",
         geo_scope=scope.model_dump(mode="json"),
+        constraints=resolved_constraints,
     )
     update["phase_log"][0].update({
         "scope_type": scope.scope_type,
         "resolved_name": scope.resolved_name,
         "source": scope.source,
     })
-    if scope.assumptions:
+    if district_corrected:
+        update["assumptions"] = [{
+            "slot": "district",
+            "assumed_value": str(scope.district),
+            "source": scope.source,
+            "message": f"根据地点“{scope.resolved_name}”定位到{scope.district}",
+            "overridable": True,
+        }]
+    elif scope.assumptions:
         update["assumptions"] = [item.model_dump(mode="json") for item in scope.assumptions]
     return update

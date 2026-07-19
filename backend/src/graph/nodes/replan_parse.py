@@ -8,7 +8,7 @@ from ..state import GraphState, phase_update
 
 _DELETE_KEYWORDS = ("去掉", "删除", "跳过", "不去", "不想去", "不喜欢", "不要", "别去", "算了")
 _REPLACE_KEYWORDS = ("换成", "改成", "替换", "换一家", "换一个")
-_ADD_KEYWORDS = ("加一家", "再加", "增加", "追加", "加一个", "加一")
+_ADD_KEYWORDS = ("加一家", "再加", "增加", "追加", "加一个", "加一", "还想去吃", "还想吃", "也想吃", "还要吃")
 _CHANGE_PREF_KEYWORDS = ("预算改", "时间改", "改预算", "改时间", "换到")
 
 # Categories that can be targeted in any operation
@@ -60,6 +60,8 @@ def _parse_target_category(query: str) -> str | None:
 
 def _parse_cuisine(query: str) -> str | None:
     """Detect dining-specific category."""
+    if any(term in query for term in ("美食", "吃东西", "吃点东西", "吃饭")):
+        return "美食"
     dining = {"日料","咖啡","甜品","火锅","川菜","粤菜","本帮菜","西餐","中餐","小吃","快餐","烧烤","面馆"}
     for c in dining:
         if c in query:
@@ -127,13 +129,29 @@ async def replan_parse(state: GraphState) -> dict:
             original_route=current_route,
         )
 
+    if any(marker in query for marker in ("重新规划", "重新为我规划", "重做路线", "重新安排")):
+        return phase_update(
+            "replan_parse",
+            summary="explicit full replan reroute=plan",
+            turn_mode="plan",
+            run_mode="plan",
+            constraints=None,
+            geo_scope=None,
+            replan_operation=None,
+            replan_operations=[],
+            original_route=current_route,
+        )
+
     # ---- LLM operation takes priority (from turn_orchestrate) ----
-    llm_op = state.get("replan_operation") or {}
-    if llm_op and llm_op.get("type"):
-        operation = llm_op
-        if operation["type"] == "change_pref" and operation.get("overrides"):
-            for k, v in (operation["overrides"] or {}).items():
-                constraints[k] = v
+    llm_ops = state.get("replan_operations") or []
+    if not llm_ops and state.get("replan_operation"):
+        llm_ops = [state["replan_operation"]]
+    if llm_ops and llm_ops[0].get("type"):
+        operations = [dict(item) for item in llm_ops]
+        operation = operations[0]
+        for item in operations:
+            if item.get("type") == "change_pref" and item.get("overrides"):
+                constraints.update(item.get("overrides") or {})
     else:
         # ---- Keyword fallback ----
         operation = None
@@ -158,7 +176,12 @@ async def replan_parse(state: GraphState) -> dict:
             target_cat = _parse_negation_target(query) or _parse_target_category(query)
             if target_cat and stops:
                 cat_idx = _find_stop_by_category(stops, target_cat)
-                seq = (cat_idx + 1) if cat_idx is not None else (seq or 1)
+                if cat_idx is not None:
+                    seq = cat_idx + 1
+                elif seq is not None:
+                    # "第1站" is an ordinal reference, not a category to persist
+                    # as an exclusion constraint.
+                    target_cat = None
             operation = {"type": "delete", "target_seq": seq or 1, "target_category": target_cat}
         # 3. Replace
         elif _parse_seq(query) or any(k in query for k in _REPLACE_KEYWORDS):
@@ -186,21 +209,66 @@ async def replan_parse(state: GraphState) -> dict:
                 cuisine = _parse_cuisine(query)
                 operation = {"type": "replace", "target_seq": 1, "new_cuisine": cuisine}
 
+        operations = [operation]
+
+    # A single utterance may remove one category while requesting another,
+    # e.g. "不想去美术馆，想吃日料". The local replan graph already has a
+    # replacement path with retrieval, so normalize this compound intent to a
+    # replacement and retain the removed category as a future exclusion.
+    normalized_operations: list[dict] = []
+    for operation in operations:
+        if operation.get("type") == "delete":
+            target_category = operation.get("target_category") or _parse_negation_target(query)
+            requested_cuisine = _parse_cuisine(query) if len(operations) == 1 else None
+            if requested_cuisine and requested_cuisine != target_category:
+                target_seq = operation.get("target_seq")
+                if target_category:
+                    target_index = _find_stop_by_category(stops, target_category)
+                    if target_index is not None:
+                        target_seq = target_index + 1
+                operation = {
+                    **operation,
+                    "type": "replace",
+                    "target_seq": target_seq or 1,
+                    "target_category": target_category,
+                    "new_cuisine": requested_cuisine,
+                    "exclude_category": target_category,
+                }
+            elif target_category and not operation.get("target_seq"):
+                target_index = _find_stop_by_category(stops, target_category)
+                if target_index is not None:
+                    operation = {**operation, "target_seq": target_index + 1}
+        normalized_operations.append(operation)
+    operations = normalized_operations
+    operation = operations[0]
+
     # change_pref → re-route to plan path
-    if operation["type"] == "change_pref":
+    if any(item.get("type") == "change_pref" for item in operations):
         return phase_update(
             "replan_parse",
-            summary=f"op={operation['type']} overrides={operation.get('overrides')} reroute=plan",
+            summary=f"ops={len(operations)} reroute=plan",
             turn_mode="plan", run_mode="plan",
             constraints=constraints if constraints else None,
             geo_scope=geo_scope if geo_scope else None,
-            replan_operation=operation, original_route=current_route,
+            replan_operation=operation if len(operations) == 1 else None,
+            replan_operations=operations, original_route=current_route,
         )
+
+    excluded = list(constraints.get("excluded_categories") or [])
+    for item in operations:
+        excluded_category = item.get("exclude_category")
+        if item.get("type") == "delete":
+            excluded_category = excluded_category or item.get("target_category")
+        if excluded_category and str(excluded_category) not in excluded:
+            excluded.append(str(excluded_category))
+    if excluded:
+        constraints["excluded_categories"] = excluded
 
     return phase_update(
         "replan_parse",
         summary=f"op={operation['type']} seq={operation.get('target_seq') or operation.get('after_seq')} cuisine={operation.get('new_cuisine')} target_cat={operation.get('target_category')}",
         constraints=constraints if constraints else None,
         geo_scope=geo_scope if geo_scope else None,
-        replan_operation=operation, original_route=current_route,
+        replan_operation=operation if len(operations) == 1 else None,
+        replan_operations=operations, original_route=current_route,
     )

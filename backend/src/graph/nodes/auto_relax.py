@@ -5,43 +5,35 @@ from __future__ import annotations
 from ..state import GraphState, phase_update
 
 
-def _push_return_by(value: object, minutes: int = 60) -> str | None:
-    if not isinstance(value, str) or ":" not in value:
-        return None
-    hour_text, minute_text = value.split(":", 1)
-    if not (hour_text.isdigit() and minute_text.isdigit()):
-        return None
-    total = int(hour_text) * 60 + int(minute_text) + minutes
-    return f"{total // 60:02d}:{total % 60:02d}"
+def _is_assumed(state: GraphState, slot: str) -> bool:
+    return any(
+        item.get("slot") == slot and item.get("source") not in {"user", "explicit_user"}
+        for item in state.get("assumptions") or []
+    )
 
 
 async def auto_relax(state: GraphState) -> dict:
     attempt = int(state.get("relax_attempt", 0))
     constraints = dict(state.get("constraints") or {})
+    original_constraints = state.get("original_constraints") or dict(constraints)
     relaxed: list[str] = []
 
     if attempt >= 1:
         return phase_update("auto_relax", summary="no relax applied", relax_attempt=attempt)
 
     budget = constraints.get("budget_per_person")
-    if budget is not None:
+    if budget is not None and _is_assumed(state, "budget_per_person"):
         constraints["budget_per_person"] = int(round(int(budget) * 1.3))
         relaxed.append("budget_per_person:+30%")
 
     time_budget = constraints.get("time_budget_minutes")
-    if time_budget is not None:
+    if time_budget is not None and _is_assumed(state, "time_budget_minutes"):
         constraints["time_budget_minutes"] = int(time_budget) + 60
         relaxed.append("time_budget_minutes:+60")
 
-    pushed_return_by = _push_return_by(constraints.get("return_by"))
-    if pushed_return_by:
-        constraints["return_by"] = pushed_return_by
-        relaxed.append("return_by:+60")
-
     geo_scope = state.get("geo_scope")
     widened_geo_scope = None
-    if constraints.get("district") or geo_scope:
-        constraints["district"] = "上海市"
+    if (constraints.get("district") or geo_scope) and _is_assumed(state, "district"):
         widened_geo_scope = {
             "raw_mentions": [],
             "resolved_name": "上海市",
@@ -61,7 +53,11 @@ async def auto_relax(state: GraphState) -> dict:
         "auto_relax",
         summary=",".join(relaxed) if relaxed else "no relax applied",
         constraints=constraints,
+        original_constraints=original_constraints,
         geo_scope=widened_geo_scope if widened_geo_scope is not None else state.get("geo_scope"),
+        plan_path="cold" if state.get("plan_path") == "hot" else state.get("plan_path"),
+        bundle_candidates=[] if state.get("plan_path") == "hot" else state.get("bundle_candidates"),
+        matched_bundle_id=None if state.get("plan_path") == "hot" else state.get("matched_bundle_id"),
         relax_attempt=attempt + 1,
         relaxed_constraints=relaxed,
     )

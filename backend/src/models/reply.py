@@ -14,6 +14,8 @@ class ReplyType(str, Enum):
     DIFF = "diff"
     DEGRADED_ROUTE = "degraded_route"
     REJECT = "reject"
+    CLARIFICATION = "clarification"
+    INFEASIBLE = "infeasible"
 
 
 class AgentReplyMeta(BaseModel):

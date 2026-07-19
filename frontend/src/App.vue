@@ -5,7 +5,9 @@ import ItineraryTimeline from './components/ItineraryTimeline.vue'
 import MapView from './components/MapView.vue'
 import FeedbackPanel from './components/FeedbackPanel.vue'
 import ProgressBar from './components/ProgressBar.vue'
-import { getSession, listSessions, submitFeedback as saveFeedback, updateSessionTitle } from './api'
+import AuthGate from './components/AuthGate.vue'
+import RuntimeConsole from './components/RuntimeConsole.vue'
+import { getCurrentUser, getHealth, getSession, listSessions, listWorkspaces, logout as logoutRequest, submitFeedback as saveFeedback, switchWorkspace, updateSessionTitle, type AuthIdentity, type Workspace } from './api'
 import { useRoutePlan } from './composables/useRoutePlan'
 import type { FeedbackRequest, RoutePlanRequest, RoutePlanResult, RouteStop, SessionDetail } from './types'
 
@@ -34,11 +36,14 @@ const {
   routeResults,
   presentation,
   error,
+  activeRunId,
+  runtimeEvents,
   submitQuery,
   cancelPlanning,
   selectResult,
   resetPlanningState,
   restoreRoute,
+  recoverActiveRun,
 } = useRoutePlan()
 
 const selectedStop = ref<RouteStop | null>(null)
@@ -53,6 +58,12 @@ const defaultBudget = ref(150)
 const defaultDuration = ref(180)
 const profileId = ref('local-traveler')
 const useDefaults = ref(true)
+const authRequired = ref(false)
+const authUser = ref<AuthIdentity | null>(null)
+const workspaces = ref<Workspace[]>([])
+const consoleOpen = ref(false)
+const llmEnabled = ref(false)
+const llmModel = ref<string | null>(null)
 
 const selectedStopIndex = computed(() => {
   if (!selectedStop.value || !selectedResult.value) return -1
@@ -67,7 +78,7 @@ const suggestionMoves = computed(() => currentRoute.value?.meta?.next_suggested_
 const activeSession = computed(() => historySessions.value.find((item) => item.sessionId === sessionId.value))
 const activeTitle = computed(() => activeSession.value?.title || '新路线对话')
 const PLAN_PHASES = [
-  'turn_orchestrate', 'constraint_extract', 'geo_resolve', 'poi_retrieve',
+  'turn_orchestrate', 'constraint_extract', 'planning_decision', 'geo_resolve', 'poi_retrieve',
   'route_generate', 'route_validate', 'route_evaluate', 'route_present',
 ]
 
@@ -77,7 +88,8 @@ function nowTime() {
 
 function buildRequest(request: RoutePlanRequest): RoutePlanRequest {
   const query = request.query.trim()
-  if (!useDefaults.value) return { ...request, query, user_id: profileId.value || undefined }
+  const identityFields = { tenant_id: authUser.value?.tenant.tenant_id, user_id: profileId.value || undefined }
+  if (!useDefaults.value) return { ...request, ...identityFields, query }
 
   const additions: string[] = []
   if (!/(徐汇|静安|黄浦|浦东).{0,2}区?/.test(query)) additions.push(defaultDistrict.value)
@@ -86,8 +98,8 @@ function buildRequest(request: RoutePlanRequest): RoutePlanRequest {
 
   return {
     ...request,
+    ...identityFields,
     query: additions.length ? `${query}，${additions.join('，')}` : query,
-    user_id: profileId.value || undefined,
   }
 }
 
@@ -113,6 +125,44 @@ async function refreshHistory() {
     updatedAt: item.updated_at ? new Date(item.updated_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '',
     routeCount: item.route_count,
   }))
+}
+
+function applyIdentity(identity: AuthIdentity) {
+  authUser.value = identity
+  profileId.value = identity.user.user_id
+  void refreshHistory()
+  void refreshWorkspaces()
+}
+
+async function refreshWorkspaces() {
+  if (!authUser.value) return
+  try { workspaces.value = await listWorkspaces() } catch { workspaces.value = [] }
+}
+
+async function changeWorkspace(event: Event) {
+  const tenantId = (event.target as HTMLSelectElement).value
+  if (!tenantId || tenantId === authUser.value?.tenant.tenant_id) return
+  try {
+    const identity = await switchWorkspace(tenantId)
+    authUser.value = identity
+    sessionId.value = null
+    historySessions.value = []
+    messages.value = []
+    resetPlanningState()
+    await refreshHistory()
+  } catch {
+    error.value = '无法切换工作区，请稍后重试。'
+  }
+}
+
+async function signOut() {
+  await logoutRequest()
+  authUser.value = null
+  workspaces.value = []
+  sessionId.value = null
+  historySessions.value = []
+  messages.value = []
+  resetPlanningState()
 }
 
 function saveHistory(query: string) {
@@ -222,6 +272,7 @@ async function handleFeedback(feedback: FeedbackRequest) {
   await saveFeedback({
     ...feedback,
     session_id: currentRoute.value?.session_id ?? sessionId.value ?? '',
+    tenant_id: authUser.value?.tenant.tenant_id,
   })
 }
 
@@ -238,7 +289,20 @@ onMounted(async () => {
     profileId.value = savedSettings.profileId || profileId.value
     useDefaults.value = savedSettings.useDefaults ?? useDefaults.value
   } catch { /* Use the built-in defaults when browser preferences are unavailable. */ }
-  try { await refreshHistory() } catch { historySessions.value = [] }
+  try {
+    const health = await getHealth()
+    authRequired.value = health.auth_enabled
+    llmEnabled.value = Boolean(health.llm_enabled)
+    llmModel.value = health.llm_model || null
+    try { applyIdentity(await getCurrentUser()) } catch { /* Anonymous local mode remains available when disabled. */ }
+    if (!authRequired.value || authUser.value) await refreshHistory()
+    const restored = await recoverActiveRun()
+    if (restored) {
+      sessionId.value = restored.session_id ?? null
+      addMessage('assistant', restored.presentation?.summary || '已恢复此前完成的路线规划。')
+      await refreshHistory()
+    }
+  } catch { historySessions.value = [] }
 })
 
 watch([defaultDistrict, defaultBudget, defaultDuration, profileId, useDefaults], () => {
@@ -249,7 +313,7 @@ watch([defaultDistrict, defaultBudget, defaultDuration, profileId, useDefaults],
     profileId: profileId.value,
     useDefaults: useDefaults.value,
   }))
-  void refreshHistory()
+  if (!authRequired.value || authUser.value) void refreshHistory()
 })
 
 watch(
@@ -260,7 +324,8 @@ watch(
 </script>
 
 <template>
-  <div class="agent-shell">
+  <AuthGate v-if="authRequired && !authUser" @authenticated="applyIdentity" />
+  <div v-else class="agent-shell">
     <aside class="history-rail">
       <div class="brand-lockup">
         <div class="brand-mark">G</div>
@@ -294,8 +359,17 @@ watch(
 
       <div class="rail-footer">
         <span class="presence-dot" />
-        <span>路线引擎在线</span>
+        <span>{{ authUser ? authUser.user.display_name : '路线引擎在线' }}</span>
+        <button v-if="authUser" class="logout-button" type="button" @click="signOut">退出</button>
       </div>
+      <label v-if="authUser && workspaces.length > 1" class="workspace-switch">
+        <span>工作区</span>
+        <select :value="authUser.tenant.tenant_id" @change="changeWorkspace">
+          <option v-for="workspace in workspaces" :key="workspace.tenant_id" :value="workspace.tenant_id">
+            {{ workspace.name }}
+          </option>
+        </select>
+      </label>
     </aside>
 
     <main class="conversation-workspace">
@@ -323,6 +397,7 @@ watch(
           <span class="state-dot" />
           {{ loading ? '规划中' : '可继续调整' }}
         </div>
+        <button class="console-trigger" type="button" @click="consoleOpen = true">运行与工作区</button>
       </header>
 
       <section ref="conversationThread" class="conversation-thread" aria-live="polite">
@@ -450,7 +525,9 @@ watch(
         <strong>{{ sessionId ? sessionId.slice(0, 8) : '尚未开始' }}</strong>
         <small>{{ currentRoute?.meta?.token_usage?.total_tokens ? `本轮 ${currentRoute.meta.token_usage.total_tokens} tokens` : '模型用量将在完成后显示' }}</small>
       </div>
+      <button class="console-rail-button" type="button" @click="consoleOpen = true">查看运行明细</button>
     </aside>
+    <RuntimeConsole :open="consoleOpen" :identity="authUser" :route="currentRoute" :active-run-id="activeRunId" :events="runtimeEvents" :loading="loading" :current-phase="currentPhase" :llm-enabled="llmEnabled" :llm-model="llmModel" @close="consoleOpen = false" />
   </div>
 </template>
 
@@ -482,6 +559,8 @@ watch(
 .session-item small { color: #94aa9f; font-size: 11px; }
 .empty-history { margin: 16px 8px; color: #91a79b; font-size: 12px; line-height: 1.6; }
 .rail-footer { display: flex; gap: 8px; align-items: center; margin-top: auto; padding: 14px 7px 0; color: #688477; font-size: 12px; }
+.logout-button { margin-left: auto; padding: 2px 0; border: 0; background: transparent; color: #5c8471; cursor: pointer; font-size: 12px; }.logout-button:hover { color: #135e42; text-decoration: underline; }
+.workspace-switch { display: grid; gap: 5px; margin: 11px 7px 0; color: #718c7e; font-size: 11px; }.workspace-switch select { width: 100%; padding: 6px 7px; border: 1px solid #cfe4d6; border-radius: 6px; background: #fbfefc; color: #28523e; font-size: 12px; }
 .presence-dot, .state-dot { width: 8px; height: 8px; border-radius: 50%; background: #38a879; box-shadow: 0 0 0 3px #e6f5eb; }
 
 .conversation-workspace { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 0 32px; }
@@ -493,7 +572,7 @@ watch(
 .title-edit { padding: 3px 0; border: 0; background: transparent; color: #398364; font-size: 12px; cursor: pointer; }
 .title-edit:hover { color: #135e42; text-decoration: underline; }
 .title-input { width: min(360px, 58vw); padding: 2px 0 4px; border: 0; border-bottom: 1px solid #57a77d; background: transparent; color: #18362a; font-family: Georgia, "Noto Serif SC", serif; font-size: 23px; font-weight: 600; outline: none; }
-.session-state { display: flex; align-items: center; gap: 9px; color: #5e7f70; font-size: 13px; }
+.session-state { display: flex; align-items: center; gap: 9px; color: #5e7f70; font-size: 13px; margin-left: auto; }.console-trigger, .console-rail-button { border: 1px solid #bedfca; border-radius: 6px; background: #fff; color: #276a4c; cursor: pointer; font-size: 12px; }.console-trigger { margin-left: 12px; padding: 7px 9px; }.console-trigger:hover, .console-rail-button:hover { border-color: #167b59; background: #edf8f0; }.console-rail-button { width: 100%; margin-top: 12px; padding: 8px 10px; text-align: left; }
 .conversation-thread { width: min(100%, 850px); min-height: 0; flex: 1 1 auto; margin: 0 auto; overflow-y: auto; overscroll-behavior: contain; padding: 34px 0; scroll-behavior: smooth; }
 .message { display: flex; gap: 11px; margin-bottom: 20px; }
 .assistant-message { max-width: 82%; }

@@ -21,7 +21,9 @@ const emit = defineEmits<{
       </span>
       <span class="time-row">
         {{ stop.arrival_time }} - {{ stop.departure_time }}
-        <span v-if="stop.travel_time_from_prev_min > 0"> · 路上 {{ stop.travel_time_from_prev_min }} 分钟</span>
+        <span v-if="stop.travel_time_from_prev_min > 0">
+          · 路上 {{ stop.travel_time_from_prev_min }} 分钟<span v-if="stop.travel_estimated">（估算）</span>
+        </span>
       </span>
       <span class="meta-row">
         停留 {{ stop.visit_duration_min }} 分钟

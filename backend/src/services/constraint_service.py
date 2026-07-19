@@ -22,6 +22,7 @@ from .constraint_rules import (
     detect_queue_tolerance_minutes,
     detect_domains,
     detect_start_at,
+    has_domain_signal,
     rule_based_extract,
 )
 
@@ -161,7 +162,7 @@ def normalize_llm_result(
 
     poi_count = result.poi_count if result.poi_count and result.poi_count > 0 else DEFAULT_POI_COUNT
 
-    domains = list(dict.fromkeys(result.domains))
+    domains = detect_domains(query) if has_domain_signal(query) else list(dict.fromkeys(result.domains))
     if not domains:
         domains = detect_domains(query)
         assumptions.append(

@@ -45,6 +45,23 @@ def test_normalize_llm_result_explicit():
     assert assumptions == []
 
 
+def test_explicit_negation_and_dining_override_conflicting_llm_domains():
+    result = ConstraintExtractResult(
+        domains=[IntentDomain.DINING, IntentDomain.SIGHTSEEING],
+        district="徐汇区",
+        budget_per_person=150,
+        time_budget_minutes=180,
+    )
+
+    constraints, _ = normalize_llm_result(
+        result,
+        "我不去博物馆了，就是吃点东西，你重新为我规划一下呢",
+    )
+
+    assert constraints.domains == [IntentDomain.DINING]
+    assert constraints.excluded_categories == ["博物馆"]
+
+
 @pytest.mark.asyncio
 async def test_extract_rule_only_by_default():
     state = build_initial_state("附近有什么好玩的")

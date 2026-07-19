@@ -7,10 +7,12 @@ export interface GeoPoint {
 
 export interface RoutePlanRequest {
   query: string
+  tenant_id?: string
   user_id?: string
   lat?: number
   lng?: number
   session_id?: string
+  idempotency_key?: string
 }
 
 export interface Assumption {
@@ -30,6 +32,8 @@ export interface RouteStop {
   departure_time: string
   visit_duration_min: number
   travel_time_from_prev_min: number
+  travel_source?: string
+  travel_estimated?: boolean
   queue_wait_min: number
 }
 
@@ -62,7 +66,7 @@ export interface Presentation {
   highlights: string[]
 }
 
-export type ReplyType = 'route' | 'multi_route' | 'diff' | 'degraded_route' | 'reject'
+export type ReplyType = 'route' | 'multi_route' | 'diff' | 'degraded_route' | 'reject' | 'clarification' | 'infeasible'
 
 export interface AgentReplyMeta {
   plan_path?: string | null
@@ -72,8 +76,14 @@ export interface AgentReplyMeta {
   next_suggested_user_moves: string[]
   phase_log: PhaseLogEntry[]
   llm_calls: LlmCall[]
+  tool_calls?: Record<string, unknown>[]
+  data_sources?: string[]
+  degraded_reasons?: string[]
   token_usage: TokenUsage
   debug_trace_id?: string | null
+  planning_decision?: Record<string, unknown> | null
+  pending_change?: Record<string, unknown> | null
+  rejected_change?: Record<string, unknown> | null
 }
 
 export interface PhaseLogEntry {
@@ -117,6 +127,7 @@ export interface RoutePlanResponse extends AgentReplyResponse {
   assumptions: Assumption[]
   route_results: RoutePlanResult[]
   current_phase: string
+  planning_outcome: string
 }
 
 // ---- Diff types for Replan ----
@@ -140,6 +151,7 @@ export interface RoutePlanDiff {
 
 export interface FeedbackRequest {
   session_id: string
+  tenant_id?: string
   action: 'confirm' | 'reject_poi' | 'rate' | 'overturn_assumption'
   poi_id?: string | null
   route_id?: string | null
@@ -170,6 +182,8 @@ export interface SessionDetail {
   recent_turns: SessionTurn[]
   turns: SessionTurn[]
   latest_response?: RoutePlanResponse | null
+  pending_change?: Record<string, unknown> | null
+  rejected_change?: Record<string, unknown> | null
 }
 
 export interface SessionListItem {
@@ -179,6 +193,41 @@ export interface SessionListItem {
   turn_count: number
   route_count: number
   updated_at?: string | null
+}
+
+export interface PlanRunStatus {
+  run_id: string
+  session_id: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | string
+  error_code?: string | null
+  result?: RoutePlanResponse | null
+}
+
+export interface AuthSession {
+  session_id: string
+  tenant_id: string
+  created_at: string
+  expires_at: string
+  revoked_at?: string | null
+  current: boolean
+}
+
+export interface TenantMember {
+  user_id: string
+  email: string
+  display_name: string
+  role: 'owner' | 'member'
+}
+
+export interface AuditEvent {
+  event_id: number
+  tenant_id: string
+  actor_user_id?: string | null
+  action: string
+  target_type: string
+  target_id?: string | null
+  data: Record<string, unknown>
+  created_at: string
 }
 
 // ---- SSE ----

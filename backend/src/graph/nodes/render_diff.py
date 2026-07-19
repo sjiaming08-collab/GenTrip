@@ -85,8 +85,47 @@ def _build_changes(original: list[dict], updated: list[dict], operation: dict) -
 
 async def render_diff(state: GraphState) -> dict:
     original = state.get("original_route") or {}
-    updated_routes = state.get("valid_routes") or state.get("candidate_routes") or []
+    delta_valid = bool(state.get("delta_valid", True))
+    updated_routes = state.get("valid_routes") or (state.get("candidate_routes") or [] if delta_valid else [])
     operation = state.get("replan_operation") or {}
+
+    if not delta_valid:
+        violations = (state.get("validation_reports") or [{}])[0].get("violations") or []
+        route_plan = original
+        diff = RoutePlanDiff(
+            original_plan_id=original.get("plan_id", ""),
+            new_plan_id=original.get("plan_id", ""),
+            changes=_build_changes(original.get("stops", []), original.get("stops", []), operation),
+            summary="无法在当前时间和预算约束内完成本次调整，已保留原路线",
+        )
+        presentation = Presentation(
+            title="路线暂未调整",
+            summary=diff.summary,
+            highlights=[str(item) for item in violations[:3]],
+        )
+        result = RoutePlanResult(
+            route=route_plan,
+            source="DEGRADED",
+            rank=1,
+            scores=RouteScores(execution=0.0, quality=0.0, final=0.0),
+        )
+        return phase_update(
+            "render_diff",
+            summary=diff.summary,
+            diff_result=diff.model_dump(mode="json"),
+            route_results=[result.model_dump(mode="json")],
+            presentation=presentation.model_dump(mode="json"),
+            reply_type="degraded_route",
+            degraded=True,
+            planning_outcome="change_rejected",
+            pending_change=state.get("pending_change") or {
+                "operations": state.get("replan_operations") or [operation],
+                "status": "not_applied",
+                "reasons": [str(item) for item in violations[:5]],
+            },
+            rejected_change=state.get("pending_change"),
+            run_status="completed",
+        )
 
     if not updated_routes:
         return phase_update("render_diff", status="failed", summary="no updated route", run_status="failed", error="no_updated_route")
@@ -137,5 +176,7 @@ async def render_diff(state: GraphState) -> dict:
         route_results=[result.model_dump(mode="json")],
         presentation=presentation.model_dump(mode="json"),
         reply_type="diff",
+        planning_outcome="change_applied",
+        pending_change=None,
         run_status="completed",
     )

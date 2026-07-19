@@ -22,11 +22,14 @@ class GraphState(TypedDict, total=False):
     # L0 RUN_META
     run_id: str
     session_id: Optional[str]
+    tenant_id: str
     turn_id: str
     run_mode: str
     turn_mode: str
     run_status: str
     plan_path: Optional[str]
+    planning_outcome: str
+    planning_decision: Optional[dict]
     current_phase: str
     error: Optional[str]
     degraded: bool
@@ -41,6 +44,7 @@ class GraphState(TypedDict, total=False):
 
     # L2 REASONING
     constraints: Optional[dict]
+    original_constraints: Optional[dict]
     geo_scope: Optional[dict]
     route_intent: Optional[dict]
     memory_context: Optional[dict]
@@ -65,6 +69,7 @@ class GraphState(TypedDict, total=False):
 
     # L3 WORKING — Replan 子图
     replan_operation: Optional[dict]
+    replan_operations: list[dict]
     original_route: Optional[dict]
     locked_stop_indices: list[int]
     unlocked_slots: list
@@ -72,6 +77,10 @@ class GraphState(TypedDict, total=False):
     delta_valid: bool
     delta_retry_count: int
     diff_result: Optional[dict]
+    replan_proposals: list[dict]
+    pending_change: Optional[dict]
+    rejected_change: Optional[dict]
+    explicitly_locked_stop_indices: list[int]
 
     # L4 OUTPUT
     route_results: list
@@ -82,8 +91,10 @@ class GraphState(TypedDict, total=False):
     # L5 TELEMETRY
     phase_log: Annotated[list[dict], operator.add]
     llm_calls: Annotated[list[dict], operator.add]
+    tool_calls: Annotated[list[dict], operator.add]
     stream_events: Annotated[list[dict], operator.add]
     runtime_run_id: Optional[str]
+    trace_id: Optional[str]
 
 
 def utc_now_iso() -> str:
@@ -97,16 +108,20 @@ def build_initial_state(
     user_lat: float | None = None,
     user_lng: float | None = None,
     session_id: str | None = None,
+    tenant_id: str = "default",
 ) -> GraphState:
     """创建 Plan Run 初始状态，所有键必须有默认值。"""
     return GraphState(
         run_id=str(uuid4()),
         session_id=session_id,
+        tenant_id=tenant_id,
         turn_id=str(uuid4()),
         run_mode="plan",
         turn_mode="plan",
         run_status="running",
         plan_path=None,
+        planning_outcome="pending",
+        planning_decision=None,
         current_phase="init",
         error=None,
         degraded=False,
@@ -117,6 +132,7 @@ def build_initial_state(
         user_lng=user_lng,
         input_ts=utc_now_iso(),
         constraints=None,
+        original_constraints=None,
         geo_scope=None,
         route_intent=None,
         memory_context=None,
@@ -136,6 +152,7 @@ def build_initial_state(
         valid_routes=[],
         scored_routes=[],
         replan_operation=None,
+        replan_operations=[],
         original_route=None,
         locked_stop_indices=[],
         unlocked_slots=[],
@@ -143,6 +160,10 @@ def build_initial_state(
         delta_valid=True,
         delta_retry_count=0,
         diff_result=None,
+        replan_proposals=[],
+        pending_change=None,
+        rejected_change=None,
+        explicitly_locked_stop_indices=[],
         validation_reports=[],
         route_results=[],
         presentation=None,
@@ -150,8 +171,10 @@ def build_initial_state(
         agent_reply_meta=None,
         phase_log=[],
         llm_calls=[],
+        tool_calls=[],
         stream_events=[],
         runtime_run_id=None,
+        trace_id=None,
     )
 
 

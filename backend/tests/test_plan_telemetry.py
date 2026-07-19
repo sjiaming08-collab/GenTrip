@@ -14,11 +14,13 @@ async def test_plan_api_includes_local_telemetry_when_llm_disabled(client):
 
     assert response.status_code == 200
     meta = response.json()["meta"]
-    assert meta["debug_trace_id"] == response.json()["run_id"]
-    assert [item["phase"] for item in meta["phase_log"]][:3] == [
+    assert meta["debug_trace_id"] != response.json()["run_id"]
+    assert len(meta["debug_trace_id"]) == 32
+    assert [item["phase"] for item in meta["phase_log"]][:4] == [
         "turn_orchestrate",
         "constraint_extract",
-        "geo_resolve",
+        "planning_decision",
+        "route_bundle_search",
     ]
     assert "route_present" in [item["phase"] for item in meta["phase_log"]]
     assert "turn_orchestrate" in _ops(meta["llm_calls"])
@@ -32,6 +34,12 @@ async def test_plan_api_includes_local_telemetry_when_llm_disabled(client):
         "completion_tokens": 0,
         "total_tokens": 0,
         "call_count": 0,
+    }
+    assert {call["operation"] for call in meta["tool_calls"]} == {
+        "poi_search",
+        "travel_time",
+        "route_bundle_search",
+        "route_bundle_ingest",
     }
 
 

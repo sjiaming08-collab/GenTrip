@@ -24,7 +24,10 @@ async def test_replan_from_an_empty_route_falls_back_to_a_fresh_plan():
 
     assert result["run_status"] == "completed"
     assert result["turn_mode"] == "plan"
-    assert "route_present" in [entry["phase"] for entry in result["phase_log"]]
+    assert result["planning_outcome"] == "route_ready"
+    assert result["route_results"]
+    for route_result in result["route_results"]:
+        assert all("公园" not in stop["category"] for stop in route_result["route"]["stops"])
 
 
 @pytest.mark.asyncio

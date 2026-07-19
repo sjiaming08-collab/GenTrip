@@ -24,6 +24,7 @@ async def reject_reply(state: GraphState) -> dict:
         "reject_reply",
         summary="non-travel request rejected",
         run_status="completed",
+        planning_outcome="rejected",
         reply_type=ReplyType.REJECT.value,
         presentation=presentation,
         agent_reply_meta=meta.model_dump(mode="json"),

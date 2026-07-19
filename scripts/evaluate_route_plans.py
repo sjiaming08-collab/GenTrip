@@ -22,6 +22,9 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from src.services.plan_service import PlanService  # noqa: E402
+from src.runtime.events import RuntimeEventBus  # noqa: E402
+from src.runtime.store import MemoryRuntimeStore  # noqa: E402
+from src.config import settings  # noqa: E402
 
 DINING_CATEGORIES = {"本帮菜", "火锅", "小吃快餐", "西餐", "日料", "咖啡", "甜品", "酒吧", "川菜", "粤菜", "烧烤"}
 SHOPPING_CATEGORIES = {"购物", "商场", "百货"}
@@ -339,12 +342,21 @@ async def run_case(service: PlanService, case: dict[str, Any]) -> dict[str, Any]
     return evaluate_case(case, state)
 
 
-async def run_cases(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    service = PlanService()
-    results: list[dict[str, Any]] = []
-    for case in cases:
-        results.append(await run_case(service, case))
-    return results
+async def run_cases(
+    cases: list[dict[str, Any]], *, persistent: bool = False, live_llm: bool = False
+) -> list[dict[str, Any]]:
+    """Run deterministically by default; persistent mode is an explicit integration check."""
+    service = PlanService() if persistent else PlanService(store=MemoryRuntimeStore(), event_bus=RuntimeEventBus(""))
+    original_llm_enabled = settings.llm_enabled
+    if not live_llm:
+        settings.llm_enabled = False
+    try:
+        results: list[dict[str, Any]] = []
+        for case in cases:
+            results.append(await run_case(service, case))
+        return results
+    finally:
+        settings.llm_enabled = original_llm_enabled
 
 
 def print_report(results: list[dict[str, Any]]) -> None:
@@ -371,13 +383,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES, help="JSON eval case file")
     parser.add_argument("--json-output", type=Path, help="Optional path to write detailed JSON results")
     parser.add_argument("--no-fail", action="store_true", help="Always exit 0 after printing results")
+    parser.add_argument("--persistent", action="store_true", help="Use configured Postgres and Redis instead of the isolated evaluator runtime")
+    parser.add_argument("--live-llm", action="store_true", help="Allow configured live LLM calls; disabled by default for deterministic evaluation")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     cases = load_cases(args.cases)
-    results = asyncio.run(run_cases(cases))
+    results = asyncio.run(run_cases(cases, persistent=args.persistent, live_llm=args.live_llm))
     print_report(results)
 
     if args.json_output:

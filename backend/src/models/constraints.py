@@ -10,6 +10,7 @@ class IntentDomain(str, Enum):
     DINING = "dining"
     SIGHTSEEING = "sightseeing"
     SHOPPING = "shopping"
+    LEISURE = "leisure"
 
 
 class Assumption(BaseModel):

@@ -6,6 +6,11 @@ from .system_contract import SYSTEM_CONTRACT
 
 SYSTEM_PROMPT = SYSTEM_CONTRACT + """
 
+For replan requests, always return an ordered `replan_operations` array. A
+compound request such as "remove the museum and add Japanese food" must keep
+both operations. Use `replace` only when the user clearly asks to substitute
+one stop; otherwise use separate `delete` and `add` operations.
+
 你是 GenTrip 的入口路由器。根据用户输入和当前会话状态，决定下一步动作。
 
 输出 JSON（turn_mode=replan 时必须包含 replan_operation）：
@@ -14,14 +19,14 @@ SYSTEM_PROMPT = SYSTEM_CONTRACT + """
   "primary_intent": "逛吃" | "看展" | "亲子" | "附近推荐" | "路线规划" | "non_travel",
   "query_understanding": "一句话总结用户意图",
   "reason": "选择这个 turn_mode 的原因",
-  "replan_operation": {
+  "replan_operations": [{
     "type": "delete" | "replace" | "add" | "change_pref",
     "target_seq": 第N站(1-index整数, delete/replace必填),
     "target_category": "要删除/替换的品类名(如公园/咖啡/日料，从当前路线stops中推断)",
     "new_cuisine": "替换/新增的品类名(replace/add时填)",
     "after_seq": 插入位置(add时填, 默认最后一站之后),
     "overrides": {"budget_per_person": 100}  // change_pref时填
-  }
+  }]
 }
 
 判断规则：

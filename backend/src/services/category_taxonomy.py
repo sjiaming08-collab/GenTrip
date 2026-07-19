@@ -15,7 +15,20 @@ DOMAIN_TO_PURPOSE_KEY = {
     IntentDomain.DINING: "DINING",
     IntentDomain.SIGHTSEEING: "SIGHTSEEING",
     IntentDomain.SHOPPING: "SHOPPING",
+    IntentDomain.LEISURE: "LEISURE",
 }
+
+GENERIC_DINING_TERMS = frozenset({"美食", "餐饮", "吃饭", "吃东西", "吃点东西"})
+DEFAULT_MEAL_CATEGORIES = (
+    "本帮菜",
+    "火锅",
+    "小吃快餐",
+    "西餐",
+    "日料",
+    "川菜",
+    "粤菜",
+    "烧烤",
+)
 
 
 @lru_cache
@@ -111,6 +124,16 @@ def widen_categories_to_parent_groups(categories: list[str] | None) -> list[str]
 
 def parent_group_of_leaf(leaf: str) -> str | None:
     return _parents().get(leaf)
+
+
+def category_matches_request(actual_category: str, requested_category: str) -> bool:
+    """Return whether a concrete POI category satisfies a user category request."""
+    actual = normalize_cuisine_term(actual_category)
+    requested = normalize_cuisine_term(requested_category)
+    if requested in GENERIC_DINING_TERMS:
+        return actual in DEFAULT_MEAL_CATEGORIES
+    allowed = expand_categories([requested]) or {requested}
+    return actual in allowed or requested in actual or actual in requested
 
 
 def validate_against_poi_categories(poi_categories: set[str]) -> list[str]:

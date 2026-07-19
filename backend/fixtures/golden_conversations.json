@@ -1,0 +1,202 @@
+[
+  {
+    "id": "xuhui_afternoon_exclusion_and_add",
+    "description": "下午看展喝咖啡后，用户否定咖啡，再追加火锅。验证约束、删除语义和局部追加。",
+    "turns": [
+      {
+        "query": "徐汇区下午两点看展览再喝咖啡，18点前回，人均150",
+        "expect": {
+          "turn_mode": "plan",
+          "plan_path": "cold",
+          "constraints": {"district": "徐汇区", "budget_per_person": 150, "start_at": "14:00", "return_by": "18:00"},
+          "required_categories": ["咖啡", "博物馆"],
+          "min_stops": 2,
+          "quality": {"min_score": 70, "min_avg_rating": 3.8, "max_leg_travel_min": 35, "require_unique_pois": true}
+        }
+      },
+      {
+        "query": "我不想喝咖啡",
+        "expect": {
+          "turn_mode": "replan",
+          "reply_type": "diff",
+          "forbidden_categories": ["咖啡"],
+          "diff_change_types": ["removed"],
+          "quality": {"min_score": 70, "max_leg_travel_min": 35, "require_unique_pois": true}
+        }
+      },
+      {
+        "query": "再加一家火锅",
+        "expect": {
+          "turn_mode": "replan",
+          "reply_type": "degraded_route",
+          "planning_outcome": "change_rejected",
+          "forbidden_categories": ["咖啡"],
+          "quality": {"min_score": 70, "max_leg_travel_min": 35, "require_unique_pois": true}
+        }
+      }
+    ]
+  },
+  {
+    "id": "huangpu_replace_after_category_delete",
+    "description": "黄浦区展览咖啡路线中删除展览类站点，再替换为日料。验证 Replan 的定向删除和替换。",
+    "turns": [
+      {
+        "query": "黄浦区逛展览再喝咖啡，下午去，18点前回",
+        "expect": {
+          "turn_mode": "plan",
+          "constraints": {"district": "黄浦区", "start_at": "14:00", "return_by": "18:00"},
+          "required_categories": ["咖啡", "博物馆"],
+          "quality": {"min_score": 70, "min_avg_rating": 3.8, "max_leg_travel_min": 35, "require_unique_pois": true}
+        }
+      },
+      {
+        "query": "我不想去博物馆",
+        "expect": {
+          "turn_mode": "replan",
+          "reply_type": "diff",
+          "forbidden_categories": ["博物馆"],
+          "diff_change_types": ["removed"],
+          "quality": {"min_score": 70, "max_leg_travel_min": 35, "require_unique_pois": true}
+        }
+      },
+        {
+          "query": "换一家日料",
+          "expect": {
+            "turn_mode": "replan",
+            "reply_type": "diff",
+            "planning_outcome": "change_applied",
+            "forbidden_categories": ["博物馆"],
+            "diff_change_types": ["replaced"],
+            "quality": {"min_score": 70, "max_leg_travel_min": 35, "require_unique_pois": true}
+          }
+        }
+    ]
+  },
+  {
+    "id": "jingan_budget_override_then_empty_route",
+    "description": "预算覆盖应重新规划；删除唯一站点仍返回可解释 diff。",
+    "turns": [
+      {
+        "query": "静安区想吃日料，预算120，2小时",
+        "expect": {
+          "turn_mode": "plan",
+          "constraints": {"district": "静安区", "budget_per_person": 120},
+          "required_categories": ["日料"],
+          "max_route_cost": 120,
+          "quality": {"min_score": 70, "min_avg_rating": 3.8, "require_unique_pois": true}
+        }
+      },
+      {
+        "query": "预算改成80",
+        "expect": {
+          "turn_mode": "plan",
+          "constraints": {"district": "静安区", "budget_per_person": 80},
+          "required_categories": ["日料"],
+          "max_route_cost": 80,
+          "quality": {"min_score": 70, "min_avg_rating": 3.8, "require_unique_pois": true}
+        }
+      },
+      {
+        "query": "我不想去第1站",
+        "expect": {
+          "turn_mode": "replan",
+          "reply_type": "diff",
+          "stop_count": 0,
+          "diff_change_types": ["removed"]
+        }
+      }
+    ]
+  },
+  {
+    "id": "non_travel_reject",
+    "description": "非出行输入不进入路线生成，返回 reject。",
+    "turns": [
+      {
+        "query": "帮我写一段 Python 代码",
+        "expect": {"turn_mode": "reject", "reply_type": "reject", "stop_count": 0}
+      }
+    ]
+  },
+  {
+    "id": "pudong_evening_hotpot_queue_limit",
+    "description": "晚餐火锅在预算、时长与排队上限下生成。验证时间语义和队列约束。",
+    "turns": [
+      {
+        "query": "浦东新区晚上6点吃火锅，预算150元，排队不超过30分钟，2小时",
+        "expect": {
+          "turn_mode": "plan",
+          "constraints": {"district": "浦东新区", "budget_per_person": 150, "time_budget_minutes": 120, "start_at": "18:00", "queue_tolerance_minutes": 30},
+          "required_categories": ["火锅"],
+          "max_route_cost": 150,
+          "quality": {"min_score": 85, "min_avg_rating": 4.0, "max_queue_wait_min": 30, "require_unique_pois": true}
+        }
+      }
+    ]
+  },
+  {
+    "id": "huangpu_cold_exclusions",
+    "description": "首轮直接给出多个避开项，不允许被召回或进入路线。",
+    "turns": [
+      {
+        "query": "黄浦区不去博物馆和公园，想喝咖啡，3小时",
+        "expect": {
+          "turn_mode": "plan",
+          "constraints": {"district": "黄浦区", "time_budget_minutes": 180},
+          "required_categories": ["咖啡"],
+          "forbidden_categories": ["博物馆", "公园"]
+        }
+      }
+    ]
+  },
+  {
+    "id": "jingan_shopping_dining_ordinal_delete",
+    "description": "购物和日料的混合路线中，按站点序号删除，不能产生类别排除。",
+    "turns": [
+      {
+        "query": "静安区下午3点购物再吃日料，20点前回，预算200元",
+        "expect": {
+          "turn_mode": "plan",
+          "constraints": {"district": "静安区", "budget_per_person": 200, "start_at": "15:00", "return_by": "20:00"},
+          "required_categories": ["日料", "购物"],
+          "quality": {"min_score": 75, "min_category_diversity": 0.5, "max_leg_travel_min": 35, "require_unique_pois": true}
+        }
+      },
+      {
+        "query": "我不想去第2站",
+        "expect": {
+          "turn_mode": "replan",
+          "reply_type": "diff",
+          "diff_change_types": ["removed"],
+          "quality": {"min_score": 70, "require_unique_pois": true}
+        }
+      }
+    ]
+  },
+  {
+    "id": "xuhui_add_dessert_preserves_constraints",
+    "description": "追加甜品不应丢失首轮区域、预算、开始时间与餐饮偏好。",
+    "turns": [
+      {
+        "query": "徐汇区下午2点喝咖啡，预算100元，3小时",
+        "expect": {
+          "turn_mode": "plan",
+          "constraints": {"district": "徐汇区", "budget_per_person": 100, "time_budget_minutes": 180, "start_at": "14:00"},
+          "required_categories": ["咖啡"],
+          "max_route_cost": 100,
+          "quality": {"min_score": 80, "min_avg_rating": 4.0, "require_unique_pois": true}
+        }
+      },
+      {
+        "query": "再加一家甜品",
+        "expect": {
+          "turn_mode": "replan",
+          "reply_type": "diff",
+          "constraints": {"district": "徐汇区", "budget_per_person": 100, "start_at": "14:00"},
+          "required_categories": ["甜品"],
+          "diff_change_types": ["added"],
+          "quality": {"min_score": 70, "max_leg_travel_min": 35, "require_unique_pois": true}
+        }
+      }
+    ]
+  }
+]

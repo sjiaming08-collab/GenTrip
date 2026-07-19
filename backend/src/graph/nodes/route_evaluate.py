@@ -14,6 +14,18 @@ def _poi_quality_index(state: GraphState) -> dict[str, float]:
     return index
 
 
+def _domain_coverage(route: RoutePlan, constraints: dict, state: GraphState) -> float:
+    requested = set(constraints.get("domains") or [])
+    if not requested:
+        return 1.0
+    poi_domains = {
+        str(poi.get("poi_id")): str(poi.get("dimension") or "")
+        for poi in state.get("candidate_pois") or []
+    }
+    covered = {poi_domains.get(stop.poi_id) for stop in route.stops}
+    return len((covered - {""}) & requested) / len(requested)
+
+
 def _rule_scores(route: RoutePlan, constraints: dict, state: GraphState) -> tuple[float, float, float]:
     budget = int(constraints["budget_per_person"])
     budget_gap = max(0, route.estimated_cost_per_person - budget)
@@ -33,20 +45,17 @@ def _rule_scores(route: RoutePlan, constraints: dict, state: GraphState) -> tupl
     quality = min(avg_rating / 5.0, 1.0)
 
     preferred = constraints.get("preferred_cuisines") or []
+    domain_coverage = _domain_coverage(route, constraints, state)
     if preferred:
-        matched = sum(1 for stop in route.stops if any(term in stop.category or term in stop.poi_name for term in preferred))
-        preference = 0.55 + 0.45 * matched / max(len(route.stops), 1)
+        matched_preferences = sum(
+            1
+            for term in preferred
+            if any(term in stop.category or term in stop.poi_name for stop in route.stops)
+        )
+        cuisine_coverage = matched_preferences / len(preferred)
+        preference = 0.35 + 0.35 * cuisine_coverage + 0.30 * domain_coverage
     else:
-        domains = set(constraints.get("domains") or [])
-        stop_categories = " ".join(stop.category for stop in route.stops)
-        domain_hits = 0
-        if "dining" in domains and any(word in stop_categories for word in ("菜", "餐", "咖啡", "甜品", "小吃")):
-            domain_hits += 1
-        if "sightseeing" in domains and any(word in stop_categories for word in ("博物馆", "公园", "观光", "文化")):
-            domain_hits += 1
-        if "shopping" in domains and "购物" in stop_categories:
-            domain_hits += 1
-        preference = 0.65 + min(domain_hits, max(len(domains), 1)) / max(len(domains), 1) * 0.25
+        preference = 0.65 + 0.35 * domain_coverage
 
     return round(execution, 3), round(quality, 3), round(min(preference, 1.0), 3)
 

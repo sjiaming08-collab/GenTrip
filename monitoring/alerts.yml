@@ -1,0 +1,17 @@
+groups:
+  - name: gentrip-runtime
+    rules:
+      - alert: GenTripPlanFailures
+        expr: increase(gentrip_plan_runs_total{status="failed"}[10m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: GenTrip plan runs are failing
+      - alert: GenTripDegradedPlans
+        expr: increase(gentrip_plan_runs_total{status="degraded"}[10m]) >= 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: GenTrip is repeatedly serving degraded plans

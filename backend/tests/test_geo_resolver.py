@@ -1,5 +1,7 @@
 import pytest
 
+from src.graph.nodes.geo_resolve import geo_resolve
+from src.graph.state import build_initial_state
 from src.services.geo_resolver import (
     GeoCandidate,
     GeoResolver,
@@ -89,3 +91,26 @@ async def test_default_scope_when_no_location_signal():
     assert scope.source == "default"
     assert scope.district == "徐汇区"
     assert scope.assumptions
+
+
+@pytest.mark.asyncio
+async def test_geo_node_corrects_default_district_from_business_area():
+    state = build_initial_state("我想在陆家嘴附近玩三个小时")
+    state["constraints"] = {
+        "raw_query": state["user_query"],
+        "district": "徐汇区",
+        "domains": ["sightseeing"],
+        "budget_per_person": 150,
+        "time_budget_minutes": 180,
+        "poi_count": 3,
+    }
+    state["assumptions"] = [{
+        "slot": "district", "assumed_value": "徐汇区", "source": "scene_default", "message": "默认徐汇区",
+    }]
+
+    update = await geo_resolve(state)
+
+    assert update["geo_scope"]["resolved_name"] == "陆家嘴"
+    assert update["constraints"]["district"] == "浦东新区"
+    assert update["assumptions"][0]["slot"] == "district"
+    assert update["assumptions"][0]["assumed_value"] == "浦东新区"

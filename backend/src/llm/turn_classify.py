@@ -27,6 +27,7 @@ class LlmTurnDecision(BaseModel):
     primary_intent: str = ""
     query_understanding: str = ""
     reason: str = ""
+    replan_operations: list[LlmReplanOp] = Field(default_factory=list)
     replan_operation: LlmReplanOp | None = None
 
 

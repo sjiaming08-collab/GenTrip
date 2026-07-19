@@ -7,6 +7,8 @@ import time
 from typing import Any
 
 import httpx
+from opentelemetry import trace
+from opentelemetry.trace.status import Status, StatusCode
 
 from ..config import settings
 from .exceptions import LLMError, LLMParseError
@@ -56,6 +58,10 @@ class DeepSeekClient:
             "Content-Type": "application/json",
         }
 
+        span = trace.get_tracer("gentrip.llm").start_span("gentrip.llm.chat")
+        span.set_attribute("gen_ai.provider.name", "deepseek")
+        span.set_attribute("gen_ai.request.model", self.model)
+        span.set_attribute("gentrip.llm.operation", operation)
         started = time.perf_counter()
         try:
             async with httpx.AsyncClient(timeout=self.timeout_sec) as client:
@@ -63,6 +69,9 @@ class DeepSeekClient:
                 response.raise_for_status()
                 raw_response = response.json()
         except httpx.HTTPError as exc:
+            span.record_exception(exc)
+            span.set_status(Status(StatusCode.ERROR, "http_error"))
+            span.end()
             raise LLMError(f"DeepSeek 请求失败: {exc}") from exc
 
         latency_ms = round((time.perf_counter() - started) * 1000, 2)
@@ -77,15 +86,26 @@ class DeepSeekClient:
             "completion_tokens": int(usage.get("completion_tokens") or 0),
             "total_tokens": int(usage.get("total_tokens") or 0),
         }
+        span.set_attribute("gen_ai.usage.input_tokens", meta["prompt_tokens"])
+        span.set_attribute("gen_ai.usage.output_tokens", meta["completion_tokens"])
+        span.set_attribute("gentrip.llm.latency_ms", latency_ms)
 
         try:
             content = raw_response["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
+            span.record_exception(exc)
+            span.set_status(Status(StatusCode.ERROR, "response_shape_error"))
+            span.end()
             raise LLMParseError(f"响应格式异常: {raw_response}") from exc
 
         try:
-            return json.loads(content), meta
+            parsed = json.loads(content)
+            span.end()
+            return parsed, meta
         except json.JSONDecodeError as exc:
+            span.record_exception(exc)
+            span.set_status(Status(StatusCode.ERROR, "json_parse_error"))
+            span.end()
             raise LLMParseError(f"JSON 解析失败: {content}") from exc
 
 

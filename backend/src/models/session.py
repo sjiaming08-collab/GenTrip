@@ -34,6 +34,7 @@ class SessionState(BaseModel):
     """Cross-turn state persisted by session_id."""
 
     session_id: str
+    tenant_id: str = "default"
     user_id: str | None = None
     title: str = ""
     version: int = 0
@@ -50,6 +51,8 @@ class SessionState(BaseModel):
     dialog_summary: str = ""
     recent_turns: list[Turn] = Field(default_factory=list)
     latest_response: dict[str, Any] | None = None
+    pending_change: dict[str, Any] | None = None
+    rejected_change: dict[str, Any] | None = None
 
     def add_turn(self, turn: Turn) -> None:
         self.recent_turns.append(turn)

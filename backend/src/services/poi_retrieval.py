@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -25,6 +26,8 @@ from .category_taxonomy import (
     resolve_domain_leaves,
     widen_categories_to_parent_groups,
 )
+from .postgis_poi_repository import load_postgis_pois
+from ..config import settings
 
 MIN_CANDIDATES = 3
 PER_DOMAIN_LIMIT = 8
@@ -60,6 +63,7 @@ class _DomainRetrieveOutcome:
     relax_step: str
     final_leaves: set[str]
     assumptions: list[Assumption] = field(default_factory=list)
+    retrieval_trace: dict = field(default_factory=dict)
 
 
 def parse_district(address: str, districts: list[str]) -> str:
@@ -93,7 +97,13 @@ def _poi_lat_lng(poi: dict) -> tuple[float, float]:
 
 
 def _poi_rating(poi: dict) -> float:
-    return float(poi.get("star") or poi.get("rating") or 4.0)
+    raw = poi.get("star")
+    if raw is None:
+        raw = poi.get("rating")
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _poi_price(poi: dict) -> int:
@@ -108,6 +118,19 @@ def _poi_queue_wait_min(poi: dict) -> int:
         return max(0, int(raw or 0))
     except (TypeError, ValueError):
         return 0
+
+
+def _poi_data_tier(poi: dict) -> str:
+    """Classify local fixture records without trusting synthetic place names."""
+    explicit = str(poi.get("data_tier") or "").strip()
+    if explicit:
+        return explicit
+    poi_id = _poi_id(poi)
+    if re.fullmatch(r"sh_[a-z]{2}_(?:food|cafe|leisure|sight)_\d{3}", poi_id):
+        return "curated_seed"
+    if re.fullmatch(r"sh_[a-z]{2}_.+_\d{4}", poi_id):
+        return "synthetic_generated"
+    return "unknown"
 
 
 def _taxonomy_aliases() -> dict[str, str]:
@@ -129,26 +152,39 @@ def _category_from_text(raw: str) -> str:
 
     if any(word in text for word in ("美术馆", "展览", "艺术馆")):
         return "博物馆"
+    if any(word in text for word in ("砂锅", "煲仔", "米线", "面馆", "面条")):
+        return "小吃快餐"
     if "公园" in text:
         return "公园"
     if any(word in text for word in ("商场", "购物", "百货", "买手店")):
         return "购物"
-    if any(word in text for word in ("景点", "观光", "地标")):
+    if any(word in text for word in ("景点", "观光", "地标", "滨江", "步道", "历史建筑", "街区", "散步")):
         return "观光"
 
     return text
 
 
-def poi_primary_category(poi: dict) -> str:
+def poi_categories(poi: dict) -> set[str]:
     raw_categories: list[str] = []
     categories = poi.get("categories") or []
     if isinstance(categories, list):
         raw_categories.extend(str(item) for item in categories if item)
     if poi.get("sub_category"):
-        raw_categories.insert(0, str(poi["sub_category"]))
+        raw_categories.append(str(poi["sub_category"]))
     if poi.get("category"):
         raw_categories.append(str(poi["category"]))
-    return _category_from_text(raw_categories[0]) if raw_categories else "其他"
+    raw_categories.extend(str(item) for item in poi.get("tags") or [] if item)
+    mapped = {_category_from_text(raw) for raw in raw_categories}
+    return {category for category in mapped if category in all_retrieval_leaves()} or {"其他"}
+
+
+def poi_primary_category(poi: dict) -> str:
+    for key in ("sub_category", "category"):
+        category = _category_from_text(str(poi.get(key) or ""))
+        if category in all_retrieval_leaves():
+            return category
+    categories = poi_categories(poi)
+    return sorted(categories)[0]
 
 
 def display_name(poi: dict) -> str:
@@ -164,11 +200,19 @@ def to_scored_poi(
     rank_index: int,
     *,
     dimension: IntentDomain,
+    match_reasons: list[str] | None = None,
 ) -> ScoredPoi:
     category = poi_primary_category(poi)
     lat, lng = _poi_lat_lng(poi)
+    data_tier = _poi_data_tier(poi)
+    tags = [str(item) for item in poi.get("tags") or [] if item]
+    if data_tier not in tags:
+        tags.append(data_tier)
+    reasons = list(dict.fromkeys(match_reasons or []))
+    tags.extend(f"match:{reason}" for reason in reasons if f"match:{reason}" not in tags)
+    name_bonus = 1.0 if "name_exact" in reasons else 0.0
     return ScoredPoi(
-        poi_id=f"dp:{_poi_id(poi)}",
+        poi_id=f"{_poi_source_prefix(poi)}:{_poi_id(poi)}",
         name=display_name(poi),
         category=category,
         district=_poi_district(poi),
@@ -176,10 +220,19 @@ def to_scored_poi(
         lng=lng,
         rating=_poi_rating(poi),
         price_per_person=_poi_price(poi),
-        composite_score=max(0.0, 1.0 - rank_index * 0.05),
+        composite_score=max(0.0, 1.0 - rank_index * 0.05) + name_bonus,
         dimension=dimension.value,
         queue_wait_min=_poi_queue_wait_min(poi),
+        opening_hours=[dict(item) for item in poi.get("opening_hours") or [] if isinstance(item, dict)],
+        ugc_summary=str(poi.get("ugc_summary") or "") or None,
+        tags=tags,
+        match_reasons=reasons,
     )
+
+
+def _poi_source_prefix(poi: dict) -> str:
+    source = str(poi.get("source") or "").strip()
+    return "dp" if not source or source == "fixture" else source
 
 
 @lru_cache
@@ -204,8 +257,8 @@ def _online_pois() -> list[dict]:
 def _build_category_index(pois_json_mtime: float) -> dict[str, list[dict]]:
     index: dict[str, list[dict]] = {}
     for poi in _online_pois():
-        leaf = poi_primary_category(poi)
-        index.setdefault(leaf, []).append(poi)
+        for leaf in poi_categories(poi):
+            index.setdefault(leaf, []).append(poi)
     return index
 
 
@@ -271,15 +324,14 @@ def _filter_pool(
     if excluded_categories:
         result = [
             poi for poi in result
-            if not any(
-                excluded in poi_primary_category(poi) or poi_primary_category(poi) in excluded
-                for excluded in excluded_categories
-            )
+            if not any(excluded in category or category in excluded for category in poi_categories(poi) for excluded in excluded_categories)
         ]
     return result
 
 
-def _collect_by_leaves(final_leaves: set[str]) -> list[dict]:
+def _collect_by_leaves(final_leaves: set[str], poi_pool: list[dict] | None = None) -> list[dict]:
+    if poi_pool is not None:
+        return [poi for poi in poi_pool if poi_categories(poi) & final_leaves]
     index = get_category_index()
     seen: set[str] = set()
     collected: list[dict] = []
@@ -293,30 +345,83 @@ def _collect_by_leaves(final_leaves: set[str]) -> list[dict]:
     return collected
 
 
-def _match_poi_names(poi_names: list[str]) -> list[dict]:
+def _poi_search_names(poi: dict) -> list[str]:
+    values = [str(poi.get("name") or ""), display_name(poi)]
+    aliases = poi.get("aliases") or poi.get("alias") or []
+    if isinstance(aliases, str):
+        aliases = [aliases]
+    values.extend(str(alias) for alias in aliases if alias)
+    return list(dict.fromkeys(value.strip() for value in values if value and value.strip()))
+
+
+def _normalize_search_text(value: str) -> str:
+    return re.sub(r"[\s()（）,，.。·_-]+", "", value).casefold()
+
+
+def _match_poi_names(poi_names: list[str], poi_pool: list[dict] | None = None) -> list[dict]:
     if not poi_names:
         return []
-    needles = [name.strip().lower() for name in poi_names if name.strip()]
+    needles = [_normalize_search_text(name) for name in poi_names if name.strip()]
     if not needles:
         return []
     matched: list[dict] = []
-    for poi in _online_pois():
-        haystack = display_name(poi).lower()
-        if any(needle in haystack for needle in needles):
+    for poi in poi_pool if poi_pool is not None else _online_pois():
+        names = [_normalize_search_text(value) for value in _poi_search_names(poi)]
+        if any(needle in haystack for needle in needles for haystack in names):
             matched.append(poi)
     return matched
 
 
-def _sort_pois(pois: list[dict], geo: _GeoRelaxStep | None = None) -> list[dict]:
+def _match_query_poi_names(query: str, poi_pool: list[dict] | None = None) -> list[dict]:
+    haystack = _normalize_search_text(query)
+    if len(haystack) < 2:
+        return []
+    matched: list[dict] = []
+    for poi in poi_pool if poi_pool is not None else _online_pois():
+        if any(len(name := _normalize_search_text(value)) >= 2 and name in haystack for value in _poi_search_names(poi)):
+            matched.append(poi)
+    return matched
+
+
+def _sort_pois(
+    pois: list[dict],
+    geo: _GeoRelaxStep | None = None,
+    match_reasons: dict[str, list[str]] | None = None,
+) -> list[dict]:
+    def quality_rank(poi: dict) -> int:
+        return {"curated_seed": 0, "unknown": 1, "synthetic_generated": 2}.get(_poi_data_tier(poi), 1)
+
+    def match_rank(poi: dict) -> int:
+        reasons = set((match_reasons or {}).get(_poi_id(poi), []))
+        if "name_exact" in reasons:
+            return 0
+        if "geo_strict" in reasons and "category_strict" in reasons:
+            return 1
+        if "geo_strict" in reasons:
+            return 2
+        return 3
+
     if geo and geo.center_lat is not None and geo.center_lng is not None:
         return sorted(
             pois,
             key=lambda p: (
+                match_rank(p),
+                quality_rank(p),
                 _distance_m(geo.center_lat or 0, geo.center_lng or 0, *_poi_lat_lng(p)),
                 -_poi_rating(p),
             ),
         )
-    return sorted(pois, key=lambda p: _poi_rating(p), reverse=True)
+    return sorted(pois, key=lambda p: (match_rank(p), quality_rank(p), -_poi_rating(p)))
+
+
+def _prefer_curated_data(pois: list[dict], geo: _GeoRelaxStep) -> list[dict]:
+    """Use synthetic records only when curated coverage is insufficient."""
+    curated = [poi for poi in pois if _poi_data_tier(poi) == "curated_seed"]
+    if geo.business_area:
+        return curated or pois
+    if len(curated) >= MIN_CANDIDATES:
+        return curated
+    return pois
 
 
 def _geo_assumption(slot: str, value: str, message: str) -> Assumption:
@@ -468,6 +573,7 @@ def _retrieve_one_domain(
     *,
     plan: RetrievalPlan,
     limit: int,
+    poi_pool: list[dict] | None = None,
 ) -> _DomainRetrieveOutcome:
     geo_steps = _build_geo_relax_plan(plan)
     initial_geo = geo_steps[0]
@@ -476,53 +582,99 @@ def _retrieve_one_domain(
         budget_per_person=plan.filters.budget_per_person if spec.domain == IntentDomain.DINING else None,
     )
 
-    pinned = _match_poi_names(spec.poi_names)
+    hard_budget = plan.filters.budget_per_person if spec.domain == IntentDomain.DINING else None
+    pinned = _match_poi_names(spec.poi_names, poi_pool)
+    pinned.extend(_match_query_poi_names(plan.raw_query, poi_pool))
     pinned = _filter_pool(
-        pinned,
-        geo=initial_geo,
-        budget_per_person=plan.filters.budget_per_person if spec.domain == IntentDomain.DINING else None,
+        _dedupe_poi_dicts(pinned),
+        geo=_GeoRelaxStep("named"),
+        budget_per_person=hard_budget,
         excluded_categories=plan.filters.excluded_categories,
     )
 
-    assumptions: list[Assumption] = []
-    final_leaves: set[str] = set()
-    filtered: list[dict] = []
-    used_step = _combined_step_name(domain_steps[-1], geo_steps[-1])
-    used_geo = geo_steps[-1]
+    # Recall is additive: strict matches remain in the pool while broader
+    # category/geo passes contribute lower-priority candidates.
+    by_id: dict[str, dict] = {}
+    reasons: dict[str, list[str]] = {}
+    channel_counts = {"name_exact": 0, "category_strict": 0, "geo_strict": 0, "geo_relaxed": 0}
 
-    for domain_step in domain_steps:
-        final_leaves = resolve_domain_leaves(spec.domain, domain_step.categories)
-        pool = _collect_by_leaves(final_leaves)
-        for geo_step in geo_steps:
+    def add(items: list[dict], *reason_values: str) -> None:
+        for poi in items:
+            poi_id = _poi_id(poi)
+            by_id[poi_id] = poi
+            bucket = reasons.setdefault(poi_id, [])
+            for reason in reason_values:
+                if reason not in bucket:
+                    bucket.append(reason)
+
+    if pinned:
+        add(pinned, "name_exact")
+        channel_counts["name_exact"] = len(pinned)
+
+    strict_count = 0
+    first_nonempty: tuple[_DomainRelaxStep, _GeoRelaxStep] | None = None
+    strict_leaves = resolve_domain_leaves(spec.domain, domain_steps[0].categories)
+    strict_category_available = bool(_collect_by_leaves(strict_leaves, poi_pool))
+    for domain_index, domain_step in enumerate(domain_steps):
+        leaves = resolve_domain_leaves(spec.domain, domain_step.categories)
+        # A user-specified category is a semantic constraint, not a hint.
+        # Broaden geography first; only expand categories when no strict
+        # category POI exists anywhere in the source.
+        if domain_index > 0 and leaves != strict_leaves and strict_category_available:
+            continue
+        pool = _collect_by_leaves(leaves, poi_pool)
+        for geo_index, geo_step in enumerate(geo_steps):
             filtered = _filter_pool(
                 pool,
                 geo=geo_step,
                 budget_per_person=domain_step.budget_per_person,
                 excluded_categories=plan.filters.excluded_categories,
             )
-            if len(filtered) >= MIN_CANDIDATES or (domain_step is domain_steps[-1] and geo_step is geo_steps[-1]):
-                used_step = _combined_step_name(domain_step, geo_step)
-                used_geo = geo_step
-                if domain_step.assumption and domain_step.name != "R0":
-                    assumptions.append(domain_step.assumption)
-                if geo_step.assumption and geo_step.name != "G0":
-                    assumptions.append(geo_step.assumption)
-                break
-        else:
-            continue
-        break
+            if filtered and first_nonempty is None:
+                first_nonempty = (domain_step, geo_step)
+            reason_values = [
+                "category_strict" if domain_index == 0 else "category_relaxed",
+                "geo_strict" if geo_index == 0 else "geo_relaxed",
+            ]
+            if domain_step.budget_per_person is None and hard_budget is not None:
+                reason_values.append("budget_relaxed")
+            add(filtered, *reason_values)
+            if domain_index == 0:
+                channel_counts["category_strict"] += len(filtered)
+            if geo_index == 0:
+                channel_counts["geo_strict"] += len(filtered)
+            else:
+                channel_counts["geo_relaxed"] += len(filtered)
+            if domain_index == 0 and geo_index == 0:
+                strict_count = len(filtered)
 
-    merged_pool = _sort_pois(_dedupe_poi_dicts(pinned + filtered), geo=used_geo)
+    used_domain, used_geo = first_nonempty or (domain_steps[0], initial_geo)
+    used_step = _combined_step_name(used_domain, used_geo)
+    assumptions: list[Assumption] = []
+    if strict_count == 0:
+        if used_domain.assumption:
+            assumptions.append(used_domain.assumption)
+        if used_geo.assumption:
+            assumptions.append(used_geo.assumption)
+
+    merged_pool = _sort_pois(list(by_id.values()), geo=initial_geo, match_reasons=reasons)
     scored = [
-        to_scored_poi(poi, idx, dimension=spec.domain)
+        to_scored_poi(poi, idx, dimension=spec.domain, match_reasons=reasons.get(_poi_id(poi), []))
         for idx, poi in enumerate(merged_pool[:limit])
     ]
 
     return _DomainRetrieveOutcome(
         pois=scored,
         relax_step=used_step,
-        final_leaves=final_leaves,
+        final_leaves=strict_leaves,
         assumptions=assumptions,
+        retrieval_trace={
+            "domain": spec.domain.value,
+            "strict_candidate_count": strict_count,
+            "channels": channel_counts,
+            "candidate_count_before_limit": len(merged_pool),
+            "named_poi_ids": [_poi_id(poi) for poi in pinned],
+        },
     )
 
 
@@ -538,7 +690,12 @@ def _dedupe_poi_dicts(pois: list[dict]) -> list[dict]:
     return result
 
 
-def retrieve_by_plan(plan: RetrievalPlan, *, limit: int = MERGED_LIMIT) -> RetrievalResult:
+def retrieve_by_plan(
+    plan: RetrievalPlan,
+    *,
+    limit: int = MERGED_LIMIT,
+    poi_pool: list[dict] | None = None,
+) -> RetrievalResult:
     if not plan.domains:
         return RetrievalResult(pois=[], plan=plan)
 
@@ -547,12 +704,14 @@ def retrieve_by_plan(plan: RetrievalPlan, *, limit: int = MERGED_LIMIT) -> Retri
     assumptions: list[Assumption] = []
     relaxed: list[str] = []
     by_domain: list[DomainRetrievalMeta] = []
+    traces: list[dict] = []
 
     for spec in plan.domains:
         outcome = _retrieve_one_domain(
             spec,
             plan=plan,
             limit=per_domain_limit,
+            poi_pool=poi_pool,
         )
         all_pois.extend(outcome.pois)
         assumptions.extend(outcome.assumptions)
@@ -566,6 +725,7 @@ def retrieve_by_plan(plan: RetrievalPlan, *, limit: int = MERGED_LIMIT) -> Retri
                 candidate_count=len(outcome.pois),
             )
         )
+        traces.append(outcome.retrieval_trace)
 
     merged = _merge_scored_pois(all_pois, limit=limit)
     return RetrievalResult(
@@ -573,14 +733,41 @@ def retrieve_by_plan(plan: RetrievalPlan, *, limit: int = MERGED_LIMIT) -> Retri
         assumptions=_merge_assumptions(assumptions),
         relaxed_constraints=relaxed,
         by_domain=by_domain,
+        retrieval_trace={
+            "channels": {
+                key: sum(int((trace.get("channels") or {}).get(key, 0)) for trace in traces)
+                for key in {key for trace in traces for key in (trace.get("channels") or {})}
+            },
+            "strict_candidate_count": sum(int(trace.get("strict_candidate_count") or 0) for trace in traces),
+            "candidate_count_before_limit": sum(int(trace.get("candidate_count_before_limit") or 0) for trace in traces),
+            "domains": traces,
+        },
         plan=plan,
     )
 
 
+async def retrieve_by_plan_async(plan: RetrievalPlan, *, limit: int = MERGED_LIMIT) -> tuple[RetrievalResult, str, bool, bool]:
+    """Prefer PostGIS; retain the fixture path when local spatial data is unavailable."""
+    poi_pool, cache_hit = await load_postgis_pois(settings.database_url)
+    if poi_pool is None:
+        return retrieve_by_plan(plan, limit=limit), "fixture", True, False
+    return retrieve_by_plan(plan, limit=limit, poi_pool=poi_pool), "postgis", False, cache_hit
+
+
 def _merge_scored_pois(pois: list[ScoredPoi], *, limit: int) -> list[ScoredPoi]:
+    def tier_rank(poi: ScoredPoi) -> int:
+        if "curated_seed" in poi.tags:
+            return 0
+        if "synthetic_generated" in poi.tags:
+            return 2
+        return 1
+
     seen: set[str] = set()
     merged: list[ScoredPoi] = []
-    for poi in sorted(pois, key=lambda item: item.rating, reverse=True):
+    for poi in sorted(
+        pois,
+        key=lambda item: (tier_rank(item), -item.composite_score, -item.rating),
+    ):
         if poi.poi_id in seen:
             continue
         seen.add(poi.poi_id)

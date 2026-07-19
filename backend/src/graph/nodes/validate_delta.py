@@ -1,20 +1,13 @@
 """[Replan 5] validate_delta — 仅校验变更部分。"""
 
 from ...models.route import RoutePlan, ValidationReport
+from ...services.category_taxonomy import category_matches_request
+from ...services.poi_hours import weekday_from_date
+from ...services.route_judge import judge_route
 from ..state import GraphState, phase_update
 
 
-def _parse_hhmm(value: object) -> int | None:
-    if not isinstance(value, str) or ":" not in value:
-        return None
-    hour_text, minute_text = value.split(":", 1)
-    if not (hour_text.isdigit() and minute_text.isdigit()):
-        return None
-    return int(hour_text) * 60 + int(minute_text)
-
-
 async def validate_delta(state: GraphState) -> dict:
-    operation = state.get("replan_operation") or {}
     constraints = state.get("constraints") or {}
     valid_routes = state.get("valid_routes") or []
     candidate_routes = state.get("candidate_routes") or []
@@ -30,41 +23,63 @@ async def validate_delta(state: GraphState) -> dict:
             degraded=True,
         )
 
-    route = RoutePlan.model_validate(routes[0]) if isinstance(routes[0], dict) else routes[0]
-    if isinstance(route, dict):
-        route = RoutePlan.model_validate(route)
+    poi_hours = {
+        str(poi.get("poi_id")): list(poi.get("opening_hours") or [])
+        for poi in (state.get("candidate_pois") or []) + (state.get("replacement_candidates") or [])
+    }
+    reports: list[ValidationReport] = []
+    feasible_routes: list[dict] = []
+    operations = state.get("replan_operations") or [state.get("replan_operation") or {}]
+    for raw in routes:
+        route = RoutePlan.model_validate(raw)
+        judgement = judge_route(
+            route,
+            constraints,
+            poi_hours=poi_hours,
+            weekday=weekday_from_date(state.get("input_ts")),
+            original_route=state.get("original_route"),
+            locked_indices=state.get("explicitly_locked_stop_indices") or [],
+        )
+        operation_violations: list[str] = []
+        route_text = " ".join(f"{stop.poi_name} {stop.category}" for stop in route.stops)
+        for item in operations:
+            requested = str(item.get("new_cuisine") or "")
+            target = str(item.get("target_category") or item.get("exclude_category") or "")
+            request_satisfied = any(
+                category_matches_request(stop.category, requested) or requested in stop.poi_name
+                for stop in route.stops
+            ) if requested else True
+            if item.get("type") in {"add", "replace"} and not request_satisfied:
+                operation_violations.append(f"本次修改未加入用户要求的 {requested}")
+            if item.get("type") == "delete" and target and target in route_text:
+                operation_violations.append(f"本次修改未移除用户排除的 {target}")
+        violations_for_report = list(dict.fromkeys(judgement.hard_violations + operation_violations))
+        reports.append(ValidationReport(
+            route_id=route.plan_id,
+            feasible=not violations_for_report,
+            violations=violations_for_report,
+            risks=judgement.risks,
+            optimistic_duration_min=judgement.optimistic_duration_min,
+            expected_duration_min=judgement.expected_duration_min,
+            conservative_duration_min=judgement.conservative_duration_min,
+        ))
+        if not violations_for_report:
+            feasible_routes.append(route.model_dump(mode="json"))
 
-    violations: list[str] = []
-    budget = int(constraints.get("budget_per_person", 150))
-    if route.estimated_cost_per_person > budget:
-        violations.append(f"人均 {route.estimated_cost_per_person} 超过预算 {budget}")
-
-    time_budget = constraints.get("time_budget_minutes")
-    if time_budget and route.total_duration_min > int(time_budget):
-        violations.append(f"总时长 {route.total_duration_min} 分钟超过预算 {int(time_budget)} 分钟")
-
-    # Check timeline consistency for modified stops
-    locked = set(state.get("locked_stop_indices") or [])
-    for i, stop in enumerate(route.stops):
-        if i in locked:
-            continue  # skip locked stops
-        arrival = _parse_hhmm(stop.arrival_time)
-        departure = _parse_hhmm(stop.departure_time)
-        if arrival is not None and departure is not None and departure < arrival:
-            violations.append(f"第 {stop.sequence} 站离开时间早于到达时间")
-
-    report = ValidationReport(
-        route_id=route.plan_id,
-        feasible=len(violations) == 0,
-        violations=violations,
-    )
-    delta_valid = report.feasible
+    delta_valid = bool(feasible_routes)
+    violations = [item for report in reports for item in report.violations]
     return phase_update(
         "validate_delta",
         summary=f"valid={delta_valid} violations={len(violations)} retry={retry_count}",
         delta_valid=delta_valid,
-        delta_retry_count=retry_count + 1 if not delta_valid else retry_count,
-        validation_reports=[report.model_dump(mode="json")],
-        valid_routes=[route.model_dump(mode="json")] if delta_valid else [],
+        delta_retry_count=retry_count,
+        validation_reports=[report.model_dump(mode="json") for report in reports],
+        valid_routes=feasible_routes[:1],
+        pending_change=None if delta_valid else {
+            "operations": state.get("replan_operations") or [state.get("replan_operation") or {}],
+            "status": "not_applied",
+            "reasons": list(dict.fromkeys(violations))[:5],
+        },
+        planning_outcome="change_applied" if delta_valid else "change_rejected",
         degraded=not delta_valid,
     )

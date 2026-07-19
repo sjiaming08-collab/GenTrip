@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import Any, AsyncIterator
+from urllib.parse import quote
 
 
 class RuntimeEventBus:
@@ -19,7 +20,7 @@ class RuntimeEventBus:
         try:
             import redis.asyncio as redis
 
-            self._client = redis.from_url(self.redis_url, decode_responses=True)
+            self._client = redis.from_url(self.redis_url, decode_responses=True, protocol=2)
             await self._client.ping()
             self.available = True
         except Exception:
@@ -35,26 +36,26 @@ class RuntimeEventBus:
         return f"gentrip:run:{run_id}:cancelled"
 
     @staticmethod
-    def _session_key(session_id: str) -> str:
-        return f"gentrip:session:{session_id}"
+    def _session_key(tenant_id: str, session_id: str) -> str:
+        return f"gentrip:tenant:{quote(tenant_id, safe='')}:session:{quote(session_id, safe='')}"
 
-    async def get_session(self, session_id: str) -> dict[str, Any] | None:
+    async def get_session(self, tenant_id: str, session_id: str) -> dict[str, Any] | None:
         await self.initialize()
         if not self.available:
             return None
         try:
-            raw = await self._client.get(self._session_key(session_id))
+            raw = await self._client.get(self._session_key(tenant_id, session_id))
             return json.loads(raw) if raw else None
         except Exception:
             return None
 
-    async def cache_session(self, session_id: str, payload: dict[str, Any], *, ttl_seconds: int) -> None:
+    async def cache_session(self, tenant_id: str, session_id: str, payload: dict[str, Any], *, ttl_seconds: int) -> None:
         await self.initialize()
         if not self.available:
             return
         try:
             await self._client.set(
-                self._session_key(session_id),
+                self._session_key(tenant_id, session_id),
                 json.dumps(payload, ensure_ascii=False, default=str),
                 ex=ttl_seconds,
             )

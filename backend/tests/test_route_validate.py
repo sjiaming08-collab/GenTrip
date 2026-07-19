@@ -55,8 +55,8 @@ async def test_route_validate_accepts_feasible_route():
 async def test_route_validate_rejects_over_budget_route():
     update = await route_validate(_state([_route("expensive", cost=140)]))
 
-    assert update["degraded"] is True
-    assert update["valid_routes"][0]["plan_id"] == "expensive"
+    assert update["degraded"] is False
+    assert update["valid_routes"] == []
     assert update["validation_reports"][0]["feasible"] is False
     assert any("超过预算" in item for item in update["validation_reports"][0]["violations"])
 
@@ -72,7 +72,7 @@ async def test_route_validate_checks_total_duration_and_return_by():
     )
 
     violations = update["validation_reports"][0]["violations"]
-    assert update["degraded"] is True
+    assert update["degraded"] is False
     assert any("总时长" in item for item in violations)
     assert any("晚于返回时间" in item for item in violations)
 
@@ -97,7 +97,37 @@ async def test_route_validate_checks_travel_time_legality():
 
 
 @pytest.mark.asyncio
-async def test_route_validate_degrades_to_least_violating_route_without_rewriting_report():
+async def test_route_validate_rejects_stop_outside_opening_hours():
+    state = _state([_route("closed")])
+    state["candidate_pois"] = [
+        {"poi_id": "poi_1", "opening_hours": [{"open": "12:00", "close": "22:00"}]},
+        {"poi_id": "poi_2", "opening_hours": [{"open": "10:00", "close": "22:00"}]},
+    ]
+
+    update = await route_validate(state)
+
+    violations = update["validation_reports"][0]["violations"]
+    assert update["validation_reports"][0]["feasible"] is False
+    assert any("在 10:00-11:00 未营业" in item for item in violations)
+
+
+@pytest.mark.asyncio
+async def test_route_validate_respects_weekday_specific_opening_hours():
+    state = _state([_route("weekend_closed")])
+    state["input_ts"] = "2026-07-18T09:00:00+08:00"  # Saturday
+    state["candidate_pois"] = [
+        {"poi_id": "poi_1", "opening_hours": [{"days": "Mon-Fri", "open": "09:00", "close": "18:00"}]},
+        {"poi_id": "poi_2", "opening_hours": [{"days": "Mon-Sun", "open": "09:00", "close": "18:00"}]},
+    ]
+
+    update = await route_validate(state)
+
+    assert update["validation_reports"][0]["feasible"] is False
+    assert any("POI 1 在 10:00-11:00 未营业" in item for item in update["validation_reports"][0]["violations"])
+
+
+@pytest.mark.asyncio
+async def test_route_validate_never_promotes_a_violating_route():
     update = await route_validate(
         _state(
             [
@@ -108,9 +138,9 @@ async def test_route_validate_degrades_to_least_violating_route_without_rewritin
         )
     )
 
-    assert update["degraded"] is True
-    assert update["valid_routes"][0]["plan_id"] == "less_bad"
-    assert "route_validate_degraded_best_effort" in update["relaxed_constraints"]
+    assert update["degraded"] is False
+    assert update["valid_routes"] == []
+    assert update["relaxed_constraints"] == []
     by_route = {report["route_id"]: report for report in update["validation_reports"]}
     assert by_route["less_bad"]["feasible"] is False
     assert by_route["less_bad"]["violations"]

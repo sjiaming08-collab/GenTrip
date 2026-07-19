@@ -28,6 +28,17 @@ async def test_turn_orchestrate_detects_replan_with_current_route():
 
 
 @pytest.mark.asyncio
+async def test_turn_orchestrate_generic_food_followup_is_replan_without_llm():
+    state = build_initial_state("我还想去吃东西呢")
+    state["session_current_route"] = {"plan_id": "old", "stops": [{"poi_name": "公园"}]}
+
+    update = await turn_orchestrate(state)
+
+    assert update["turn_mode"] == "replan"
+    assert update["run_mode"] == "replan"
+
+
+@pytest.mark.asyncio
 async def test_turn_orchestrate_prefers_llm_intent_adjustment_over_keyword_fallback(monkeypatch):
     async def llm_adjustment(*_args, **_kwargs):
         return (

@@ -10,6 +10,7 @@ from .api.container import plan_service
 from .api.routes import router
 from .api.sse import router as sse_router
 from .config import settings
+from .observability.tracing import instrument_fastapi
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,6 +42,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(router, prefix=settings.api_prefix)
     app.include_router(sse_router, prefix=settings.api_prefix)
+    instrument_fastapi(app)
     return app
 
 

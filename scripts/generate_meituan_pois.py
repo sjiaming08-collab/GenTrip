@@ -104,7 +104,50 @@ LEISURE = [
     ("KTV",         60,200, 120, "休闲娱乐"),
 ]
 
+CULTURE_ART = [
+    ("艺术展馆/美术展览", 0,120, 90, "文化艺术"),
+    ("画廊/艺术空间",    0,80,  70, "文化艺术"),
+    ("文化中心/公共空间", 0,60,  60, "文化艺术"),
+    ("手作工坊/陶艺",    80,260, 100, "文化艺术"),
+]
+
+LIFE_SERVICE = [
+    ("按摩/足疗",       80,260, 90, "按摩足疗"),
+    ("中式推拿/理疗",   120,360, 80, "按摩足疗"),
+    ("SPA/精油护理",   220,680, 120, "按摩足疗"),
+    ("美容美体/皮肤管理", 180,580, 100, "美容美体"),
+    ("美甲美睫",       120,360, 80, "美容美体"),
+]
+
+SPORTS = [
+    ("健身房/团课",      60,180, 90, "体育运动"),
+    ("攀岩馆/抱石",      80,180, 120, "体育运动"),
+    ("羽毛球馆",         40,120, 120, "体育运动"),
+    ("网球场",           60,180, 120, "体育运动"),
+    ("游泳馆",           50,160, 90, "体育运动"),
+    ("保龄球馆",         60,180, 100, "体育运动"),
+    ("室内滑雪/滑冰",    120,380, 120, "体育运动"),
+]
+
+GAMING = [
+    ("电玩城/街机",      60,180, 90, "电玩游戏"),
+    ("电竞馆",           50,160, 120, "电玩游戏"),
+    ("桌游馆",           60,160, 120, "电玩游戏"),
+    ("VR体验馆",         80,220, 90, "电玩游戏"),
+    ("密室/剧本杀",      100,280, 150, "电玩游戏"),
+]
+
+FAMILY = [
+    ("亲子乐园",         80,240, 120, "亲子游乐"),
+    ("儿童运动馆",       100,260, 100, "亲子游乐"),
+    ("科学体验馆",       60,180, 90, "亲子游乐"),
+]
+
 ALL_CATS = DINING + CAFE + SIGHTSEEING + SHOPPING + LEISURE
+EXPANSION_CATEGORIES = CULTURE_ART + LIFE_SERVICE + SPORTS + GAMING + FAMILY + [
+    ("奥特莱斯", 0, 0, 150, "商场"),
+    ("生活方式商场", 0, 0, 100, "商场"),
+]
 
 # ── Rich name pools ──
 FOOD_NAMES = [
@@ -179,6 +222,27 @@ LEISURE_NAMES = [
     ("屋有岛密室",""),("X先生",""),("纯K",""),("好乐迪",""),("星聚会KTV",""),
 ]
 
+CULTURE_NAMES = [
+    ("西岸艺术空间",""),("衡复文化中心",""),("弄堂画廊",""),("苏州河艺术仓",""),
+    ("浦东当代艺术馆",""),("外滩公共艺术中心",""),("武康路陶艺工坊",""),("思南手作实验室",""),
+]
+SERVICE_NAMES = [
+    ("云栖足道",""),("梧桐里推拿馆",""),("静安精油SPA",""),("西岸理疗中心",""),
+    ("衡山路皮肤管理",""),("陆家嘴美甲美睫",""),("前滩养生馆",""),("愚园路采耳馆",""),
+]
+SPORTS_NAMES = [
+    ("徐汇抱石馆",""),("静安羽毛球中心",""),("前滩运动公园",""),("陆家嘴游泳馆",""),
+    ("西岸网球中心",""),("南京西路健身工场",""),("浦东保龄球馆",""),("张江冰雪空间",""),
+]
+GAME_NAMES = [
+    ("万代游戏中心",""),("前滩电竞空间",""),("静安桌游社",""),("外滩VR体验馆",""),
+    ("新天地密室研究所",""),("徐家汇街机厅",""),("张江剧本杀馆",""),
+]
+FAMILY_NAMES = [
+    ("小小探索家儿童乐园",""),("亲子运动星球",""),("浦东科学体验馆",""),
+    ("徐汇儿童攀岩馆",""),("静安亲子艺术屋",""),("黄浦自然实验室",""),
+]
+
 ALL_NAMES = FOOD_NAMES + CAFE_NAMES + SIGHT_NAMES + SHOP_NAMES + LEISURE_NAMES
 
 # ── Tag pools ──
@@ -192,6 +256,10 @@ TAGS = {
     "culture":       ["文化","室内","需预约","知识性","导览"],
     "shopping":      ["购物","品牌齐全","地铁直达","有餐饮","停车方便"],
     "entertainment": ["沉浸式","互动","提前购票","适合聚会"],
+    "service":       ["预约制","放松减压","私密","服务细致","工作日优惠"],
+    "sports":        ["需预约","运动友好","淋浴间","装备租赁","适合朋友"],
+    "gaming":        ["沉浸式","多人互动","适合聚会","预约优先","雨天友好"],
+    "family":        ["亲子友好","室内","周末热门","互动体验","适合儿童"],
 }
 
 def tag_pool(cat_name, price, rating):
@@ -211,11 +279,19 @@ def tag_pool(cat_name, price, rating):
         pools.append("bar")
     elif any(w in cat_name for w in ("公园","绿地","步道","街区","建筑","教堂")):
         pools.append("outdoor")
-    elif any(w in cat_name for w in ("博物馆","美术馆")):
+    elif any(w in cat_name for w in ("博物馆","美术馆","展馆","画廊","艺术","文化中心","手作")):
         pools.append("culture")
-    elif any(w in cat_name for w in ("购物","百货","买手","古着","书店")):
+    elif any(w in cat_name for w in ("购物","百货","奥特莱斯","生活方式","买手","古着","书店")):
         pools.append("shopping")
-    elif any(w in cat_name for w in ("剧场","Livehouse","电影院","密室","剧本杀","KTV")):
+    elif any(w in cat_name for w in ("按摩","足疗","推拿","SPA","美容","美甲")):
+        pools.append("service")
+    elif any(w in cat_name for w in ("健身","攀岩","羽毛球","网球","游泳","保龄球","滑雪","滑冰")):
+        pools.append("sports")
+    elif any(w in cat_name for w in ("电玩城","电竞","桌游","VR","密室","剧本杀")):
+        pools.append("gaming")
+    elif any(w in cat_name for w in ("亲子","儿童","科学体验")):
+        pools.append("family")
+    elif any(w in cat_name for w in ("剧场","Livehouse","电影院","KTV")):
         pools.append("entertainment")
     tags = set()
     for p in (pools or ["casual_dining"]):
@@ -230,9 +306,19 @@ def get_name(cat_name, district, idx):
         pool = CAFE_NAMES
     elif any(w in cat_name for w in ("博物馆","美术馆","公园","绿地","街区","地标","滨江","建筑","教堂")):
         pool = SIGHT_NAMES
-    elif any(w in cat_name for w in ("购物","百货","买手","古着","书店","文创")):
+    elif any(w in cat_name for w in ("展馆","画廊","艺术","文化中心","手作")):
+        pool = CULTURE_NAMES
+    elif any(w in cat_name for w in ("购物","百货","奥特莱斯","生活方式","买手","古着","书店","文创")):
         pool = SHOP_NAMES
-    elif any(w in cat_name for w in ("剧场","Livehouse","电影院","密室","剧本杀","KTV")):
+    elif any(w in cat_name for w in ("按摩","足疗","推拿","SPA","美容","美甲")):
+        pool = SERVICE_NAMES
+    elif any(w in cat_name for w in ("健身","攀岩","羽毛球","网球","游泳","保龄球","滑雪","滑冰")):
+        pool = SPORTS_NAMES
+    elif any(w in cat_name for w in ("电玩城","电竞","桌游","VR","密室","剧本杀")):
+        pool = GAME_NAMES
+    elif any(w in cat_name for w in ("亲子","儿童","科学体验")):
+        pool = FAMILY_NAMES
+    elif any(w in cat_name for w in ("剧场","Livehouse","电影院","KTV")):
         pool = LEISURE_NAMES
 
     name, _ = random.choice(pool)
@@ -371,6 +457,7 @@ def create_poi(poi_id, dist_name, area_name, area_center, cat_def, idx):
 
     return {
         "poi_id": poi_id,
+        "data_tier": "synthetic_generated",
         "name": name,
         "brand_type": random.choice(["independent","independent","local_chain","chain"]),
         "category": parent,
@@ -455,12 +542,25 @@ def main():
             all_pois.append(poi)
             counter += 1
 
+    # Add an independent category-expansion tranche without perturbing the
+    # established synthetic baseline used by Golden Set route tests.
+    for dist_name, dist_info in DISTRICTS.items():
+        prefix = {"徐汇区":"xh","静安区":"ja","黄浦区":"hp","浦东新区":"pd"}[dist_name]
+        for index, cat_def in enumerate(EXPANSION_CATEGORIES * 2):
+            area_name, area_center, _ = dist_info["areas"][index % len(dist_info["areas"])]
+            tag = cat_def[0].split("/")[0]
+            poi_id = f"sh_{prefix}_{tag}_{counter:04d}"
+            all_pois.append(create_poi(poi_id, dist_name, area_name, area_center, cat_def, counter))
+            counter += 1
+
     # Prepend the 16 hand-crafted originals
     meituan_path = data_dir / "poi_seed_meituan_style.json"
     if meituan_path.exists():
         with meituan_path.open(encoding="utf-8") as f:
             original = json.load(f)
         orig_pois = original.get("pois", [])
+        for poi in orig_pois:
+            poi.setdefault("data_tier", "curated_seed")
         orig_ids = {p["poi_id"] for p in orig_pois}
         all_pois = orig_pois + [p for p in all_pois if p["poi_id"] not in orig_ids]
 

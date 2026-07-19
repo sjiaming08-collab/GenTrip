@@ -50,4 +50,5 @@ class RetrievalResult(BaseModel):
     assumptions: list[Assumption] = Field(default_factory=list)
     relaxed_constraints: list[str] = Field(default_factory=list)
     by_domain: list[DomainRetrievalMeta] = Field(default_factory=list)
+    retrieval_trace: dict = Field(default_factory=dict)
     plan: Optional[RetrievalPlan] = None

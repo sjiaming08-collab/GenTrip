@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from ...models.route import RoutePlan, RouteStop, ScoredPoi
+from ...services.travel_time import mock_travel_estimator, travel_time_service
+from ...services.poi_hours import is_open_during, weekday_from_date
 from ..state import GraphState, phase_update
 
 BUCKET_LIMIT = 6
@@ -98,12 +100,28 @@ def _distance_m(a: ScoredPoi, b: ScoredPoi) -> float:
 def _travel_time_min(prev: ScoredPoi | None, current: ScoredPoi) -> int:
     if prev is None:
         return 0
-    km = _distance_m(prev, current) / 1000
-    return min(35, max(8, math.ceil(km / 4 * 60)))
+    return mock_travel_estimator.estimate(prev.lat, prev.lng, current.lat, current.lng).duration_min
 
 
 def _poi_quality(poi: ScoredPoi) -> float:
-    return poi.composite_score + poi.rating / 5
+    name_exact_bonus = 3.0 if "match:name_exact" in poi.tags else 0.0
+    return poi.composite_score + poi.rating / 5 + name_exact_bonus
+
+
+def _normalized_poi_name(name: str) -> str:
+    return "".join(name.casefold().split())
+
+
+def _dedupe_pois_by_name(pois: list[ScoredPoi]) -> list[ScoredPoi]:
+    result: list[ScoredPoi] = []
+    seen: set[str] = set()
+    for poi in pois:
+        key = _normalized_poi_name(poi.name)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(poi)
+    return result
 
 
 def _group_pois(pois: list[ScoredPoi]) -> dict[str, list[ScoredPoi]]:
@@ -118,7 +136,10 @@ def _group_pois(pois: list[ScoredPoi]) -> dict[str, list[ScoredPoi]]:
         buckets.setdefault(key, []).append(poi)
 
     for key, items in buckets.items():
-        buckets[key] = sorted(items, key=_poi_quality, reverse=True)[:BUCKET_LIMIT]
+        ranked = sorted(items, key=_poi_quality, reverse=True)
+        pinned = [poi for poi in ranked if "match:name_exact" in poi.tags]
+        regular = [poi for poi in ranked if "match:name_exact" not in poi.tags]
+        buckets[key] = pinned + regular[: max(0, BUCKET_LIMIT - len(pinned))]
     return buckets
 
 
@@ -275,8 +296,9 @@ def _generate_for_skeleton(
 
         for beam in beams:
             used_ids = {poi.poi_id for poi in beam.pois}
+            used_names = {_normalized_poi_name(poi.name) for poi in beam.pois}
             for poi in pool:
-                if poi.poi_id in used_ids:
+                if poi.poi_id in used_ids or _normalized_poi_name(poi.name) in used_names:
                     continue
                 if queue_tolerance_minutes is not None and _queue_wait_min(poi) > queue_tolerance_minutes:
                     stats.pruned_by_queue += 1
@@ -363,7 +385,9 @@ def _derive_start_minute(state: GraphState, constraints: dict, skeletons: list[l
         word in query for word in ("附近", "现在", "马上", "当前", "就近")
     ):
         current_minute = _minute_from_input_ts(state.get("input_ts"))
-        if current_minute is not None:
+        # Late-night nearby requests should fall back to a useful scene time
+        # rather than filtering every POI against closed business hours.
+        if current_minute is not None and 8 * 60 <= current_minute <= 20 * 60:
             return _round_up_to_quarter(current_minute + 30)
 
     if any(word in query for word in ("下午", "午后")):
@@ -379,7 +403,19 @@ def _derive_start_minute(state: GraphState, constraints: dict, skeletons: list[l
     return DEFAULT_START_MINUTE
 
 
-def _build_route(
+def _uses_late_nearby_default(state: GraphState, constraints: dict) -> bool:
+    if _parse_hhmm(constraints.get("start_at")) is not None or _parse_hhmm(constraints.get("return_by")) is not None:
+        return False
+    query = str(constraints.get("raw_query") or state.get("user_query") or "")
+    if state.get("user_lat") is None or state.get("user_lng") is None:
+        return False
+    if not any(word in query for word in ("附近", "现在", "马上", "当前", "就近")):
+        return False
+    current_minute = _minute_from_input_ts(state.get("input_ts"))
+    return current_minute is not None and not 8 * 60 <= current_minute <= 20 * 60
+
+
+async def _build_route(
     name: str,
     summary: str,
     pois: tuple[ScoredPoi, ...],
@@ -391,7 +427,14 @@ def _build_route(
     prev: ScoredPoi | None = None
 
     for idx, poi in enumerate(pois, start=1):
-        travel = _travel_time_min(prev, poi)
+        estimate = await travel_time_service.estimate(
+            prev.lat,
+            prev.lng,
+            poi.lat,
+            poi.lng,
+            mode="walking",
+        ) if prev else None
+        travel = estimate.duration_min if estimate else 0
         arrival = cursor_min + travel
         queue_wait = _queue_wait_min(poi)
         visit_duration = _visit_duration(poi)
@@ -406,7 +449,14 @@ def _build_route(
                 departure_time=_format_time(departure),
                 visit_duration_min=visit_duration,
                 travel_time_from_prev_min=travel,
+                travel_source=estimate.source if estimate else "origin",
+                travel_estimated=estimate.estimated if estimate else True,
+                travel_time_lower_bound_min=estimate.min_duration_min if estimate else 0,
+                travel_time_upper_bound_min=estimate.max_duration_min if estimate else 0,
+                travel_confidence=estimate.confidence if estimate else "high",
                 queue_wait_min=queue_wait,
+                lat=poi.lat,
+                lng=poi.lng,
             )
         )
         cursor_min = departure
@@ -424,6 +474,39 @@ def _build_route(
 def _route_area_name(state: GraphState, constraints: dict) -> str:
     geo_scope = state.get("geo_scope") or {}
     return geo_scope.get("resolved_name") or geo_scope.get("business_area") or constraints.get("district") or "上海"
+
+
+def _route_is_open(route: RoutePlan, pois: tuple[ScoredPoi, ...], weekday: int | None) -> bool:
+    by_id = {poi.poi_id: poi for poi in pois}
+    for stop in route.stops:
+        poi = by_id.get(stop.poi_id)
+        if poi is None:
+            continue
+        arrival = _parse_hhmm(stop.arrival_time)
+        departure = _parse_hhmm(stop.departure_time)
+        if arrival is not None and departure is not None and is_open_during(poi.opening_hours, arrival, departure, weekday=weekday) is False:
+            return False
+    return True
+
+
+def _candidate_start_minutes(
+    state: GraphState,
+    constraints: dict,
+    pois: tuple[ScoredPoi, ...],
+    base_start: int,
+) -> list[int]:
+    """Try POI opening times only when the user did not fix the schedule."""
+    query = str(constraints.get("raw_query") or state.get("user_query") or "")
+    if constraints.get("start_at") or constraints.get("return_by") or any(word in query for word in ("现在", "马上", "立刻")):
+        return [base_start]
+
+    starts = [base_start]
+    for poi in pois:
+        for interval in poi.opening_hours:
+            opening = _parse_hhmm(interval.get("open"))
+            if opening is not None and 8 * 60 <= opening <= 20 * 60:
+                starts.append(max(base_start, opening))
+    return list(dict.fromkeys(starts))
 
 
 def _slot_to_dict(slot: SlotHint) -> dict:
@@ -448,13 +531,18 @@ async def route_generate(state: GraphState) -> dict:
             route_generation_meta={"candidate_count": 0, "skeletons": []},
         )
 
-    all_pois = sorted(all_pois, key=_poi_quality, reverse=True)[: max(BUCKET_LIMIT * 3, BUCKET_LIMIT)]
+    ranked_pois = sorted(all_pois, key=_poi_quality, reverse=True)
+    pinned_pois = [poi for poi in ranked_pois if "match:name_exact" in poi.tags]
+    regular_pois = [poi for poi in ranked_pois if "match:name_exact" not in poi.tags]
+    all_pois = _dedupe_pois_by_name(pinned_pois + regular_pois)
+    all_pois = all_pois[: max(BUCKET_LIMIT * 3, BUCKET_LIMIT, len(pinned_pois))]
     buckets = _group_pois(all_pois)
     domains = _ordered_domains(constraints.get("domains"))
     poi_count = max(1, int(constraints.get("poi_count") or 3))
     query = str(constraints.get("raw_query") or state.get("user_query") or "")
     skeletons = _route_skeletons(domains, poi_count, query)
     start_minute = _derive_start_minute(state, constraints, skeletons)
+    late_nearby_default = _uses_late_nearby_default(state, constraints)
 
     candidates: list[BeamCandidate] = []
     generation_stats = GenerationStats()
@@ -503,32 +591,62 @@ async def route_generate(state: GraphState) -> dict:
 
     area = _route_area_name(state, constraints)
     routes: list[RoutePlan] = []
-    for idx, candidate in enumerate(list(unique.values())[:MAX_ROUTES], start=1):
-        routes.append(
-            _build_route(
-                name=f"{area}路线{idx}",
-                summary=f"{len(candidate.pois)} 站 · { _format_time(start_minute)} 出发 · 人均约 {candidate.estimated_cost_per_person} 元",
+    pruned_by_hours = 0
+    route_start_minutes: list[int] = []
+    for candidate in unique.values():
+        for candidate_start in _candidate_start_minutes(state, constraints, candidate.pois, start_minute):
+            route = await _build_route(
+                name=f"{area}路线{len(routes) + 1}",
+                summary=f"{len(candidate.pois)} 站 · {_format_time(candidate_start)} 出发 · 人均约 {candidate.estimated_cost_per_person} 元",
                 pois=candidate.pois,
-                start_minute=start_minute,
+                start_minute=candidate_start,
             )
-        )
+            time_budget = constraints.get("time_budget_minutes")
+            if time_budget is not None and route.total_duration_min > int(time_budget):
+                generation_stats.pruned_by_time += 1
+                break
+            if not _route_is_open(route, candidate.pois, weekday_from_date(state.get("input_ts"))):
+                pruned_by_hours += 1
+                continue
+            routes.append(route)
+            route_start_minutes.append(candidate_start)
+            break
+        if len(routes) >= MAX_ROUTES:
+            break
+
+    effective_start = route_start_minutes[0] if route_start_minutes else start_minute
+    start_adjusted_for_hours = any(item != start_minute for item in route_start_minutes)
 
     route_generation_meta = {
         "candidate_count": len(all_pois),
         "bucket_counts": {domain: len(items) for domain, items in buckets.items()},
         "skeletons": [[_slot_to_dict(slot) for slot in skeleton] for skeleton in skeletons],
-        "start_time": _format_time(start_minute),
+        "start_time": _format_time(effective_start),
+        "start_time_adjusted_for_hours": start_adjusted_for_hours,
         "pruned_by_time": generation_stats.pruned_by_time,
         "pruned_by_budget": generation_stats.pruned_by_budget,
         "pruned_by_queue": generation_stats.pruned_by_queue,
+        "pruned_by_hours": pruned_by_hours,
         "used_fallback": generation_stats.used_fallback,
     }
 
+    travel_sources = {stop.travel_source for route in routes for stop in route.stops if stop.travel_source != "origin"}
+    fallback_used = any(stop.travel_estimated and stop.travel_source == "mock_haversine" for route in routes for stop in route.stops)
     update = phase_update(
         "route_generate",
         summary=f"generated {len(routes)} routes",
         candidate_routes=[route.model_dump(mode="json") for route in routes],
         route_generation_meta=route_generation_meta,
+        tool_calls=[
+            {
+                "operation": "travel_time",
+                "status": "success",
+                "source": ",".join(sorted(travel_sources)) or "origin",
+                "estimated": fallback_used,
+                "fallback_used": fallback_used,
+                "call_count": sum(max(0, len(route.stops) - 1) for route in routes),
+            }
+        ],
     )
     update["phase_log"][0].update({
         "route_count": len(routes),
@@ -536,4 +654,23 @@ async def route_generate(state: GraphState) -> dict:
     })
     if generation_stats.used_fallback:
         update["relaxed_constraints"] = ["route_generate_bucket_relaxed"]
+    if late_nearby_default:
+        update["assumptions"] = [{
+            "slot": "start_at",
+            "assumed_value": _format_time(start_minute),
+            "source": "scene_default",
+            "message": f"当前时间较晚，已按可营业时段默认安排 {_format_time(start_minute)} 出发",
+            "overridable": True,
+        }]
+    elif start_adjusted_for_hours:
+        update["assumptions"] = [
+            *(state.get("assumptions") or []),
+            {
+                "slot": "start_at",
+                "assumed_value": _format_time(effective_start),
+                "source": "opening_hours",
+                "message": f"未指定出发时间，已按营业时间安排 {_format_time(effective_start)} 开始",
+                "overridable": True,
+            },
+        ]
     return update

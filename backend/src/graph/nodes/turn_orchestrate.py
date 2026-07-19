@@ -15,6 +15,7 @@ _REVISION_KEYWORDS = (
     "删", "去掉", "跳过", "加", "增加", "追加", "再加",
     "改预算", "改时间", "换一家", "换一个", "不太行",
     "有没有别的", "有没有更", "重新推荐", "换一种",
+    "还想去吃", "还想吃", "也想吃", "还要吃",
 )
 
 
@@ -94,15 +95,17 @@ async def turn_orchestrate(state: GraphState) -> dict:
         fallback_used=bool(llm_meta.get("fallback_used")),
     )
 
-    # Pass LLM's replan_operation to state (replan_parse will use it)
-    replan_op = None
-    if turn_mode == "replan" and decision.replan_operation:
-        op = decision.replan_operation
-        replan_op = {
+    # Pass the ordered operation list to the replan subgraph. Keep the
+    # singular field as a compatibility bridge for old callers and snapshots.
+    replan_ops: list[dict] = []
+    if turn_mode == "replan":
+        source_ops = decision.replan_operations or ([decision.replan_operation] if decision.replan_operation else [])
+        replan_ops = [{
             "type": op.type, "target_seq": op.target_seq,
             "target_category": op.target_category, "new_cuisine": op.new_cuisine,
             "after_seq": op.after_seq, "overrides": op.overrides,
-        }
+        } for op in source_ops]
+    replan_op = replan_ops[0] if len(replan_ops) == 1 else None
 
     return phase_update(
         "turn_orchestrate",
@@ -111,5 +114,6 @@ async def turn_orchestrate(state: GraphState) -> dict:
         run_mode="replan" if turn_mode == "replan" else "plan",
         route_intent=intent.model_dump(mode="json"),
         replan_operation=replan_op,
+        replan_operations=replan_ops,
         llm_calls=[llm_call],
     )

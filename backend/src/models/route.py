@@ -26,6 +26,10 @@ class ScoredPoi(BaseModel):
     composite_score: float = 0.0
     dimension: Optional[str] = None
     queue_wait_min: int = 0
+    opening_hours: list[dict] = Field(default_factory=list)
+    ugc_summary: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+    match_reasons: list[str] = Field(default_factory=list)
 
 
 class RouteStop(BaseModel):
@@ -37,7 +41,14 @@ class RouteStop(BaseModel):
     departure_time: str
     visit_duration_min: int
     travel_time_from_prev_min: int = 0
+    travel_source: str = "mock_haversine"
+    travel_estimated: bool = True
+    travel_time_lower_bound_min: int = 0
+    travel_time_upper_bound_min: int = 0
+    travel_confidence: str = "medium"
     queue_wait_min: int = 0
+    lat: Optional[float] = None
+    lng: Optional[float] = None
 
 
 class RoutePlan(BaseModel):
@@ -53,6 +64,10 @@ class ValidationReport(BaseModel):
     route_id: str
     feasible: bool
     violations: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    optimistic_duration_min: Optional[int] = None
+    expected_duration_min: Optional[int] = None
+    conservative_duration_min: Optional[int] = None
 
 
 class ScoredRoute(BaseModel):

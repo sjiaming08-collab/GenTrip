@@ -1,12 +1,16 @@
 import asyncio
+from datetime import datetime, timezone
 
 import pytest
 
+from src.api.container import plan_service as app_plan_service
 from src.runtime.store import MemoryRuntimeStore
 
 
 async def _wait_for_terminal(client, run_id: str) -> dict:
-    for _ in range(40):
+    # This is an async API contract, not a sub-second unit operation. Keep the
+    # poll interval short while allowing the graph to complete under CI load.
+    for _ in range(200):
         response = await client.get(f"/api/v1/routes/plan/runs/{run_id}")
         assert response.status_code == 200
         body = response.json()
@@ -49,3 +53,26 @@ async def test_memory_store_supersedes_active_run_for_same_session():
     old_run = await store.get_run("00000000-0000-0000-0000-000000000001")
     assert old_run["status"] == "cancelled"
     assert old_run["error_code"] == "superseded"
+
+
+@pytest.mark.asyncio
+async def test_session_list_serializes_postgres_timestamp(client, monkeypatch):
+    async def list_sessions(_user_id, limit=30, *, tenant_id=None):
+        assert limit == 30
+        assert tenant_id == "default"
+        return [{
+            "session_id": "session-1",
+            "tenant_id": "default",
+            "title": "Saved route",
+            "dialog_summary": "summary",
+            "turn_count": 1,
+            "route_count": 1,
+            "updated_at": datetime(2026, 7, 17, 12, 0, tzinfo=timezone.utc),
+        }]
+
+    monkeypatch.setattr(app_plan_service, "list_sessions", list_sessions)
+
+    response = await client.get("/api/v1/sessions", params={"user_id": "local-traveler"})
+
+    assert response.status_code == 200
+    assert response.json()["sessions"][0]["updated_at"] == "2026-07-17T12:00:00Z"

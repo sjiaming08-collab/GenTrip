@@ -9,26 +9,53 @@ from .constraint_rules import (
     DEFAULT_DISTRICT,
     detect_district,
     detect_preferred_cuisines,
+    positive_domain_query,
 )
+from .category_taxonomy import DEFAULT_MEAL_CATEGORIES
 
 _SIGHTSEEING_CATEGORY_KEYWORDS: list[tuple[str, list[str]]] = [
     ("博物馆", ["博物馆", "美术馆", "展览"]),
     ("公园", ["公园", "绿地"]),
     ("观光", ["外滩", "观光", "打卡"]),
     ("文化", ["文化", "历史"]),
+    ("文化艺术", ["艺术展", "画廊", "艺术空间", "文化中心"]),
 ]
 
 _DINING_TRIGGER = ("吃", "餐", "美食", "饭", "料理", "逛吃", "聚餐", "宴请", "午餐", "晚餐")
 _SIGHTSEEING_TRIGGER = ("逛", "玩", "游", "观光", "打卡", "展览", "博物馆", "公园", "景点", "逛逛")
 _SHOPPING_TRIGGER = ("买", "购物", "逛街买", "商场")
+_LEISURE_CATEGORY_KEYWORDS: list[tuple[str, list[str]]] = [
+    ("按摩足疗", ["按摩", "足疗", "推拿", "SPA", "采耳"]),
+    ("美容美体", ["美容", "美甲", "美发", "护肤"]),
+    ("体育运动", ["健身", "攀岩", "游泳", "羽毛球", "网球", "保龄球", "滑雪"]),
+    ("电玩游戏", ["电玩", "游戏", "电竞", "桌游", "VR"]),
+    ("演出娱乐", ["剧场", "演出", "Livehouse", "电影院", "KTV", "密室"]),
+    ("亲子游乐", ["亲子", "儿童乐园", "乐高"]),
+]
+_LEISURE_TRIGGER = tuple(keyword for _, keywords in _LEISURE_CATEGORY_KEYWORDS for keyword in keywords)
+_GENERIC_MEAL_TRIGGER = ("吃饭", "吃东西", "吃点东西", "美食", "用餐", "正餐")
+
+
+def _meal_categories_for_generic_query(query: str, cuisines: list[str] | None) -> list[str] | None:
+    if cuisines:
+        return cuisines
+    if any(term in query for term in _GENERIC_MEAL_TRIGGER):
+        return list(DEFAULT_MEAL_CATEGORIES)
+    return None
 
 
 def _detect_sightseeing_categories(query: str) -> list[str] | None:
+    query = positive_domain_query(query)
     hits: list[str] = []
     for leaf, keywords in _SIGHTSEEING_CATEGORY_KEYWORDS:
         if any(k in query for k in keywords):
             hits.append(leaf)
     return hits or None
+
+
+def _detect_leisure_categories(query: str) -> list[str] | None:
+    query = positive_domain_query(query)
+    return [leaf for leaf, keywords in _LEISURE_CATEGORY_KEYWORDS if any(keyword in query for keyword in keywords)] or None
 
 
 def _merge_categories(*groups: list[str] | None) -> list[str] | None:
@@ -49,7 +76,7 @@ def _dining_from_query(query: str) -> DomainSpec | None:
     if cuisines or any(k in query for k in _DINING_TRIGGER):
         return DomainSpec(
             domain=IntentDomain.DINING,
-            categories=cuisines,
+            categories=_meal_categories_for_generic_query(query, cuisines),
         )
     return None
 
@@ -72,6 +99,12 @@ def _shopping_from_query(query: str) -> DomainSpec | None:
     )
 
 
+def _leisure_from_query(query: str) -> DomainSpec | None:
+    if not any(keyword in query for keyword in _LEISURE_TRIGGER):
+        return None
+    return DomainSpec(domain=IntentDomain.LEISURE, categories=_detect_leisure_categories(query))
+
+
 def _domain_specs_from_constraints(constraints: dict, query: str) -> list[DomainSpec]:
     """将 constraint_extract 输出的 domains 转为 DomainSpec。"""
     preferred = constraints.get("preferred_cuisines") or detect_preferred_cuisines(query)
@@ -81,15 +114,21 @@ def _domain_specs_from_constraints(constraints: dict, query: str) -> list[Domain
         _detect_sightseeing_categories(query),
         _detect_sightseeing_categories(activity_text),
     )
+    leisure_categories = _merge_categories(
+        _detect_leisure_categories(query),
+        _detect_leisure_categories(activity_text),
+    )
 
     specs: list[DomainSpec] = []
     for raw in constraints.get("domains") or []:
         domain = IntentDomain(raw)
         categories = None
         if domain == IntentDomain.DINING:
-            categories = preferred
+            categories = _meal_categories_for_generic_query(query, preferred)
         elif domain == IntentDomain.SIGHTSEEING:
             categories = sight_categories
+        elif domain == IntentDomain.LEISURE:
+            categories = leisure_categories
         specs.append(DomainSpec(domain=domain, categories=categories))
     return specs
 
@@ -115,7 +154,13 @@ def _default_domain(query: str) -> DomainSpec:
     if any(k in query for k in _SHOPPING_TRIGGER):
         return DomainSpec(domain=IntentDomain.SHOPPING, categories=None)
     if any(k in query for k in _DINING_TRIGGER):
-        return DomainSpec(domain=IntentDomain.DINING, categories=detect_preferred_cuisines(query))
+        cuisines = detect_preferred_cuisines(query)
+        return DomainSpec(
+            domain=IntentDomain.DINING,
+            categories=_meal_categories_for_generic_query(query, cuisines),
+        )
+    if any(k in query for k in _LEISURE_TRIGGER):
+        return DomainSpec(domain=IntentDomain.LEISURE, categories=_detect_leisure_categories(query))
     return DomainSpec(domain=IntentDomain.SIGHTSEEING, categories=None)
 
 
@@ -152,6 +197,7 @@ def parse_retrieval_plan(state: GraphState) -> RetrievalPlan:
             _dining_from_query(query),
             _sightseeing_from_query(query),
             _shopping_from_query(query),
+            _leisure_from_query(query),
         ]))
 
     domains = _dedupe_domains(domains)

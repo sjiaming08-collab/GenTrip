@@ -30,12 +30,12 @@ export function useSSEStream() {
     stopStream()
   }
 
-  function startStream(query: string, sessionId: string | null) {
+  async function startStream(query: string, sessionId: string | null) {
     stopStream()
     error.value = null
     isStreaming.value = true
     try {
-      source = subscribeToStream(
+      const subscription = await subscribeToStream(
         { query, session_id: sessionId ?? undefined },
         (event: SSEProgressEvent) => {
           currentPhase.value = event.phase
@@ -51,6 +51,8 @@ export function useSSEStream() {
           stopStream()
         },
       )
+      source = subscription.source
+      activeRunId = subscription.runId
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'SSE 启动失败'
       stopStream()

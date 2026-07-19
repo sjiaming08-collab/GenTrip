@@ -50,3 +50,26 @@ async def test_session_history_lists_turns_and_persists_title(client):
     assert updated.json()["title"] == "周末咖啡路线"
     assert len(updated.json()["turns"]) == 1
     assert updated.json()["latest_response"]["session_id"] == session_id
+
+
+@pytest.mark.asyncio
+async def test_replan_succeeds_after_richer_poi_coverage(client):
+    session_id = "api-replan-applied-001"
+    for query in (
+        "黄浦区逛展览再喝咖啡，下午去，18点前回",
+        "我不想去博物馆",
+    ):
+        response = await client.post("/api/v1/routes/plan", json={"query": query, "session_id": session_id})
+        assert response.status_code == 200
+
+    replacement = await client.post(
+        "/api/v1/routes/plan",
+        json={"query": "换一家日料", "session_id": session_id},
+    )
+    assert replacement.status_code == 200
+    body = replacement.json()
+    assert body["reply_type"] == "diff"
+    assert body["planning_outcome"] == "change_applied"
+
+    session = (await client.get(f"/api/v1/sessions/{session_id}")).json()
+    assert session["latest_response"]["planning_outcome"] == "change_applied"
