@@ -66,6 +66,9 @@ async def test_redis_stream_mode_enqueues_then_worker_executes(monkeypatch):
     assert final is not None
     assert final["run_status"] == "completed"
     assert run["status"] == "completed"
+    checkpoints = await service.list_run_checkpoints(started["run_id"])
+    assert checkpoints
+    assert checkpoints[-1]["phase"] == "route_present"
 
 
 @pytest.mark.asyncio

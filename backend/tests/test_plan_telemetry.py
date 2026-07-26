@@ -23,6 +23,8 @@ async def test_plan_api_includes_local_telemetry_when_llm_disabled(client):
         "route_bundle_search",
     ]
     assert "route_present" in [item["phase"] for item in meta["phase_log"]]
+    constraint_phase = next(item for item in meta["phase_log"] if item["phase"] == "constraint_extract")
+    assert "duration=180min" in constraint_phase["summary"]
     assert "turn_orchestrate" in _ops(meta["llm_calls"])
     assert "constraint_extract" in _ops(meta["llm_calls"])
     assert "route_evaluate" in _ops(meta["llm_calls"])

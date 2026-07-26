@@ -50,6 +50,7 @@ class SessionState(BaseModel):
     route_feedback: list[dict[str, Any]] = Field(default_factory=list)
     dialog_summary: str = ""
     recent_turns: list[Turn] = Field(default_factory=list)
+    memory_facts: list[dict[str, Any]] = Field(default_factory=list)
     latest_response: dict[str, Any] | None = None
     pending_change: dict[str, Any] | None = None
     rejected_change: dict[str, Any] | None = None

@@ -151,6 +151,31 @@ class RunStatusResponse(BaseModel):
     result: Optional[PlanResponse] = None
 
 
+class RunCheckpointResponse(BaseModel):
+    phase: str
+    phase_index: int
+    state: dict = Field(default_factory=dict)
+    created_at: datetime
+
+
+class RunCheckpointListResponse(BaseModel):
+    run_id: str
+    checkpoints: list[RunCheckpointResponse] = Field(default_factory=list)
+
+
+class DeadLetterRunResponse(BaseModel):
+    message_id: str
+    source_message_id: str
+    attempt: int
+    error: str
+    run_id: Optional[str] = None
+    session_id: Optional[str] = None
+
+
+class DeadLetterRunListResponse(BaseModel):
+    entries: list[DeadLetterRunResponse] = Field(default_factory=list)
+
+
 class SessionResponse(BaseModel):
     session_id: str
     tenant_id: str = "default"

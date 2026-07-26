@@ -82,9 +82,11 @@ memory_context:
   time_budget_minutes={DEFAULT_MINUTES}
   poi_count={DEFAULT_POI_COUNT}
 
+Duration examples: "five hours" and "玩五个小时" mean time_budget_minutes=300; "two and a half hours" and "两小时半" mean 150. When start_at and return_by are both explicit, also calculate their minute difference into time_budget_minutes.
+
 JSON schema:
 {{
-  "domains": ["dining"|"sightseeing"|"shopping", ...],
+  "domains": ["dining"|"sightseeing"|"shopping"|"leisure", ...],
   "district": "string|null",
   "time_budget_minutes": "integer|null",
   "start_at": "HH:MM|null",

@@ -41,8 +41,10 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       RUNTIME_EXECUTION_MODE: redis_stream
       RUNTIME_QUEUE_MAX_ATTEMPTS: ${RUNTIME_QUEUE_MAX_ATTEMPTS:-3}
+      RUNTIME_RUN_DEADLINE_SECONDS: ${RUNTIME_RUN_DEADLINE_SECONDS:-120}
+      RUNTIME_TENANT_MAX_ACTIVE_RUNS: ${RUNTIME_TENANT_MAX_ACTIVE_RUNS:-3}
       RUNTIME_QUEUE_DEAD_LETTER_STREAM: ${RUNTIME_QUEUE_DEAD_LETTER_STREAM:-gentrip:plan-runs:dlq}
-      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://otel-collector:4318/v1/traces}
       TENANT_API_KEYS_JSON: ${TENANT_API_KEYS_JSON:-}
       # Local Compose defaults to the documented anonymous workspace mode.
       # Production must set this false and enable AUTH_ENABLED or API keys.
@@ -86,8 +88,10 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       RUNTIME_EXECUTION_MODE: redis_stream
       RUNTIME_QUEUE_MAX_ATTEMPTS: ${RUNTIME_QUEUE_MAX_ATTEMPTS:-3}
+      RUNTIME_RUN_DEADLINE_SECONDS: ${RUNTIME_RUN_DEADLINE_SECONDS:-120}
+      RUNTIME_TENANT_MAX_ACTIVE_RUNS: ${RUNTIME_TENANT_MAX_ACTIVE_RUNS:-3}
       RUNTIME_QUEUE_DEAD_LETTER_STREAM: ${RUNTIME_QUEUE_DEAD_LETTER_STREAM:-gentrip:plan-runs:dlq}
-      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://otel-collector:4318/v1/traces}
       TENANT_API_KEYS_JSON: ${TENANT_API_KEYS_JSON:-}
       AUTH_ENABLED: ${AUTH_ENABLED:-false}
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
@@ -110,7 +114,42 @@ services:
       api:
         condition: service_healthy
 
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.114.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./monitoring/otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on:
+      - tempo
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    user: "0:0"
+    command: ["-config.file=/etc/tempo.yml"]
+    ports:
+      - "${TEMPO_PORT:-3200}:3200"
+    volumes:
+      - ./monitoring/tempo.yml:/etc/tempo.yml:ro
+      - tempo-data:/tmp/tempo
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+      - tempo
+
 volumes:
   postgres-data:
   redis-data:
   prometheus-data:
+  tempo-data:
+  grafana-data:

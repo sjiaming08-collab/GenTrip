@@ -19,10 +19,13 @@ from .constraint_rules import (
     DEFAULT_POI_COUNT,
     DISTRICTS,
     detect_excluded_categories,
+    detect_preferred_cuisines,
+    detect_minutes,
     detect_queue_tolerance_minutes,
     detect_domains,
     detect_start_at,
-    has_domain_signal,
+    detect_return_by,
+    derive_time_budget_minutes,
     rule_based_extract,
 )
 
@@ -127,14 +130,28 @@ def normalize_llm_result(
                 _assumption("budget_per_person", str(budget), f"未指定预算，默认人均 {budget} 元", source="scene_default")
             )
 
-    minutes = result.time_budget_minutes
+    # Direct user time expressions are deterministic evidence and must win over
+    # an omitted or conflicting structured LLM field.
+    minutes = detect_minutes(query) or result.time_budget_minutes
     start_at = (
         detect_start_at(query)
         or _valid_return_by(result.start_at)
         or _valid_return_by(_memory_value(state, "start_at"))
     )
-    return_by = _valid_return_by(result.return_by)
-    if minutes is None and return_by is None:
+    return_by = detect_return_by(query) or _valid_return_by(result.return_by)
+    if minutes is None:
+        derived_minutes = derive_time_budget_minutes(start_at, return_by)
+        if derived_minutes is not None:
+            minutes = derived_minutes
+            assumptions.append(
+                _assumption(
+                    "time_budget_minutes",
+                    str(minutes),
+                    f"根据 {start_at} 至 {return_by} 计算可用时长：{minutes} 分钟",
+                    source="derived_time_window",
+                )
+            )
+    if minutes is None:
         memory_minutes = _memory_int(state, "time_budget_minutes")
         if memory_minutes is not None:
             minutes = memory_minutes
@@ -162,7 +179,10 @@ def normalize_llm_result(
 
     poi_count = result.poi_count if result.poi_count and result.poi_count > 0 else DEFAULT_POI_COUNT
 
-    domains = detect_domains(query) if has_domain_signal(query) else list(dict.fromkeys(result.domains))
+    # The structured LLM decision is authoritative for semantic intent. Rules
+    # only provide a deterministic fallback when the model returns no usable
+    # domain, rather than flattening a nuanced multi-activity request.
+    domains = list(dict.fromkeys(result.domains))
     if not domains:
         domains = detect_domains(query)
         assumptions.append(
@@ -174,7 +194,10 @@ def normalize_llm_result(
             )
         )
 
-    preferred_cuisines = result.preferred_cuisines
+    # Canonical taxonomy extraction protects explicit cuisine wording from an
+    # LLM omission, while the LLM remains free to infer preferences when the
+    # user only expresses a scene or atmosphere.
+    preferred_cuisines = detect_preferred_cuisines(query) or result.preferred_cuisines
     memory_cuisine = _memory_value(state, "preferred_cuisines")
     if preferred_cuisines is None and memory_cuisine:
         preferred_cuisines = [item.strip() for item in memory_cuisine.split(",") if item.strip()] or None

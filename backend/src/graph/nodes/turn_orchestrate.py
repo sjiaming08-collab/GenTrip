@@ -28,6 +28,10 @@ def _keyword_classify(query: str, has_current_route: bool) -> tuple[str, str]:
     return "plan", "new_plan"
 
 
+def _has_explicit_revision(query: str) -> bool:
+    return any(keyword in query for keyword in _REVISION_KEYWORDS)
+
+
 def _primary_intent(query: str, mode: str) -> str:
     if mode == "reject":
         return "non_travel"
@@ -77,8 +81,10 @@ async def turn_orchestrate(state: GraphState) -> dict:
         intent_type = "revision" if turn_mode == "replan" else (
             "non_travel" if turn_mode == "reject" else "new_plan"
         )
-        # Validate: replan requires current route
-        if turn_mode == "replan" and not has_route:
+        # A saved route alone is not consent to alter it. Fresh, standalone
+        # requests must take the full planning path even if the classifier
+        # over-predicts replan from the conversation context.
+        if turn_mode == "replan" and (not has_route or not _has_explicit_revision(query)):
             turn_mode = "plan"
             intent_type = "new_plan"
         primary_intent = decision.primary_intent or _primary_intent(query, turn_mode)

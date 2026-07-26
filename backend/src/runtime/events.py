@@ -62,6 +62,15 @@ class RuntimeEventBus:
         except Exception:
             return
 
+    async def delete_session(self, tenant_id: str, session_id: str) -> None:
+        await self.initialize()
+        if not self.available:
+            return
+        try:
+            await self._client.delete(self._session_key(tenant_id, session_id))
+        except Exception:
+            return
+
     async def publish(self, run_id: str, event: dict[str, Any]) -> None:
         await self.initialize()
         if self.available:

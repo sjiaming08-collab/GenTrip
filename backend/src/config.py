@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     runtime_queue_claim_idle_ms: int = 60000
     runtime_queue_max_attempts: int = 3
     runtime_queue_dead_letter_stream: str = "gentrip:plan-runs:dlq"
+    runtime_run_deadline_seconds: int = 120
+    runtime_tenant_max_active_runs: int = 3
     otel_service_name: str = "gentrip-api"
     otel_exporter_otlp_traces_endpoint: str = ""
     travel_time_provider: Literal["mock", "http"] = "mock"

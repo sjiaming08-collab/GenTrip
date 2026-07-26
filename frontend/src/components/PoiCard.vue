@@ -29,6 +29,7 @@ const emit = defineEmits<{
         停留 {{ stop.visit_duration_min }} 分钟
         <template v-if="stop.queue_wait_min > 0"> · 预计排队 {{ stop.queue_wait_min }} 分钟</template>
       </span>
+      <span v-if="stop.opening_hours_text" class="hours-row">营业时间：{{ stop.opening_hours_text }}</span>
     </span>
   </button>
 </template>
@@ -88,5 +89,10 @@ const emit = defineEmits<{
 .meta-row {
   color: #6d8b7c;
   font-size: 0.88rem;
+}
+.hours-row {
+  color: #8a6a31;
+  font-size: 0.79rem;
+  line-height: 1.45;
 }
 </style>

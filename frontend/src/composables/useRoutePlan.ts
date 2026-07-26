@@ -24,6 +24,14 @@ function loadActiveRun(): PersistedRun | null {
   }
 }
 
+function runErrorMessage(errorCode: string | null | undefined, status: string): string {
+  if (errorCode === 'worker_retry_exhausted') return '规划服务连续重试后仍未完成，请重新提交。'
+  if (errorCode === 'queue_unavailable') return '规划队列暂不可用，请稍后重试。'
+  if (errorCode === 'runtime_error') return '规划过程中出现异常，请重新提交。'
+  if (errorCode === 'cancelled') return '本次规划已取消。'
+  return `规划任务${status === 'failed' ? '失败' : status}`
+}
+
 /** Route state managed through the durable SSE planning run. */
 export function useRoutePlan() {
   const loading = ref(false)
@@ -178,7 +186,7 @@ export function useRoutePlan() {
       return run.result
     }
     if (run.status === 'failed' || run.status === 'cancelled') {
-      error.value = run.error_code || `plan run ${run.status}`
+      error.value = runErrorMessage(run.error_code, run.status)
       activeRunId.value = null
       clearActiveRun()
       return null

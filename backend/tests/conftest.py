@@ -15,6 +15,9 @@ from src.services.route_bundle_cache import route_bundle_cache
 def disable_live_llm(monkeypatch):
     monkeypatch.setattr(settings, "llm_enabled", False)
     monkeypatch.setattr(settings, "llm_api_key", "")
+    monkeypatch.setattr(settings, "auth_enabled", False)
+    monkeypatch.setattr(settings, "tenant_api_keys_json", "")
+    monkeypatch.setattr(settings, "allow_insecure_tenant_id", True)
 
 
 @pytest.fixture(autouse=True)

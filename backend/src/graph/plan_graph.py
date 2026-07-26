@@ -2,6 +2,8 @@
 
 from langgraph.graph import END, StateGraph
 
+from ..runtime.stage_observer import observe_node
+
 from .nodes.auto_relax import auto_relax
 from .nodes.bundle_rerank import bundle_rerank
 from .nodes.constraint_extract import constraint_extract
@@ -65,34 +67,37 @@ def _route_after_delta(state: GraphState) -> str:
 def build_plan_graph():
     graph = StateGraph(GraphState)
 
+    def add_node(name, node):
+        graph.add_node(name, observe_node(name, node))
+
     # --- Turn Orchestrator ---
-    graph.add_node("turn_orchestrate", turn_orchestrate)
+    add_node("turn_orchestrate", turn_orchestrate)
 
     # --- Plan path ---
-    graph.add_node("constraint_extract", constraint_extract)
-    graph.add_node("planning_decision", planning_decision)
-    graph.add_node("planning_reply", planning_reply)
-    graph.add_node("route_bundle_search", route_bundle_search)
-    graph.add_node("bundle_rerank", bundle_rerank)
-    graph.add_node("route_bundle_ingest", route_bundle_ingest)
-    graph.add_node("geo_resolve", geo_resolve)
-    graph.add_node("poi_retrieve", poi_retrieve)
-    graph.add_node("route_generate", route_generate)
-    graph.add_node("route_validate", route_validate)
-    graph.add_node("auto_relax", auto_relax)
-    graph.add_node("route_evaluate", route_evaluate)
-    graph.add_node("route_present", route_present)
+    add_node("constraint_extract", constraint_extract)
+    add_node("planning_decision", planning_decision)
+    add_node("planning_reply", planning_reply)
+    add_node("route_bundle_search", route_bundle_search)
+    add_node("bundle_rerank", bundle_rerank)
+    add_node("route_bundle_ingest", route_bundle_ingest)
+    add_node("geo_resolve", geo_resolve)
+    add_node("poi_retrieve", poi_retrieve)
+    add_node("route_generate", route_generate)
+    add_node("route_validate", route_validate)
+    add_node("auto_relax", auto_relax)
+    add_node("route_evaluate", route_evaluate)
+    add_node("route_present", route_present)
 
     # --- Replan path ---
-    graph.add_node("replan_parse", replan_parse)
-    graph.add_node("lock_confirmed", lock_confirmed)
-    graph.add_node("partial_retrieval", partial_retrieval)
-    graph.add_node("local_optimize", local_optimize)
-    graph.add_node("validate_delta", validate_delta)
-    graph.add_node("render_diff", render_diff)
+    add_node("replan_parse", replan_parse)
+    add_node("lock_confirmed", lock_confirmed)
+    add_node("partial_retrieval", partial_retrieval)
+    add_node("local_optimize", local_optimize)
+    add_node("validate_delta", validate_delta)
+    add_node("render_diff", render_diff)
 
     # --- Reject ---
-    graph.add_node("reject_reply", reject_reply)
+    add_node("reject_reply", reject_reply)
 
     # --- Entry ---
     graph.set_entry_point("turn_orchestrate")

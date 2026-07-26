@@ -45,9 +45,25 @@ def test_normalize_llm_result_explicit():
     assert assumptions == []
 
 
-def test_explicit_negation_and_dining_override_conflicting_llm_domains():
+def test_normalize_llm_result_recovers_explicit_time_when_llm_omits_it():
     result = ConstraintExtractResult(
-        domains=[IntentDomain.DINING, IntentDomain.SIGHTSEEING],
+        domains=[IntentDomain.SIGHTSEEING],
+        district="黄浦区",
+        budget_per_person=150,
+        time_budget_minutes=None,
+    )
+
+    constraints, assumptions = normalize_llm_result(result, "黄浦区下午2点看展，18点前回")
+
+    assert constraints.time_budget_minutes == 240
+    assert constraints.start_at == "14:00"
+    assert constraints.return_by == "18:00"
+    assert any(item.slot == "time_budget_minutes" and item.source == "derived_time_window" for item in assumptions)
+
+
+def test_explicit_negation_is_preserved_with_llm_selected_domain():
+    result = ConstraintExtractResult(
+        domains=[IntentDomain.DINING],
         district="徐汇区",
         budget_per_person=150,
         time_budget_minutes=180,
@@ -60,6 +76,19 @@ def test_explicit_negation_and_dining_override_conflicting_llm_domains():
 
     assert constraints.domains == [IntentDomain.DINING]
     assert constraints.excluded_categories == ["博物馆"]
+
+
+def test_normalize_llm_result_keeps_richer_llm_domains_over_rule_keywords():
+    result = ConstraintExtractResult(
+        domains=[IntentDomain.DINING, IntentDomain.LEISURE],
+        district="黄浦区",
+        budget_per_person=150,
+        time_budget_minutes=180,
+    )
+
+    constraints, _ = normalize_llm_result(result, "黄浦区看展后想按摩再吃点东西")
+
+    assert constraints.domains == [IntentDomain.DINING, IntentDomain.LEISURE]
 
 
 @pytest.mark.asyncio

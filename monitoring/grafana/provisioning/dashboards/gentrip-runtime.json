@@ -1,0 +1,14 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {"id": 1, "type": "timeseries", "title": "Plan runs by status", "targets": [{"expr": "sum by (status) (increase(gentrip_plan_runs_total[5m]))", "legendFormat": "{{status}}"}]},
+    {"id": 2, "type": "timeseries", "title": "LLM tokens per 5 minutes", "targets": [{"expr": "sum by (token_type) (increase(gentrip_llm_tokens_total[5m]))", "legendFormat": "{{token_type}}"}]},
+    {"id": 3, "type": "timeseries", "title": "Average plan duration", "targets": [{"expr": "sum by (status) (increase(gentrip_plan_run_duration_seconds[5m])) / clamp_min(sum by (status) (increase(gentrip_plan_runs_total[5m])), 1)", "legendFormat": "{{status}}"}]},
+    {"id": 4, "type": "timeseries", "title": "RouteBundle cache", "targets": [{"expr": "sum by (outcome) (increase(gentrip_route_bundle_search_total[5m]))", "legendFormat": "{{outcome}}"}]}
+  ],
+  "schemaVersion": 39,
+  "title": "GenTrip Runtime",
+  "uid": "gentrip-runtime",
+  "version": 1
+}

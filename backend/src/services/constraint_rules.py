@@ -79,7 +79,7 @@ def detect_budget(query: str) -> int | None:
     return None
 
 
-def detect_minutes(query: str) -> int | None:
+def _detect_minutes_legacy(query: str) -> int | None:
     queue_duration = re.search(r"\u6392\u961f.{0,12}?\d+\s*\u5206\u949f", query)
     if queue_duration:
         query = query.replace(queue_duration.group(0), "")
@@ -91,6 +91,67 @@ def detect_minutes(query: str) -> int | None:
     match = re.search(r"(\d+)\s*分钟", query)
     if match:
         return int(match.group(1))
+    return None
+
+
+def derive_time_budget_minutes(start_at: str | None, return_by: str | None) -> int | None:
+    """Derive available minutes when the user provides an explicit time window."""
+    if not start_at or not return_by:
+        return None
+    try:
+        start_hour, start_minute = (int(part) for part in start_at.split(":", 1))
+        end_hour, end_minute = (int(part) for part in return_by.split(":", 1))
+    except (TypeError, ValueError):
+        return None
+    start = start_hour * 60 + start_minute
+    end = end_hour * 60 + end_minute
+    return end - start if end > start else None
+
+
+_DURATION_CHINESE_NUMBERS = {
+    "\u4e00": 1, "\u4e24": 2, "\u4e8c": 2, "\u4e09": 3, "\u56db": 4,
+    "\u4e94": 5, "\u516d": 6, "\u4e03": 7, "\u516b": 8, "\u4e5d": 9, "\u5341": 10,
+}
+
+
+def _parse_duration_number(raw: str) -> float | None:
+    try:
+        return float(raw)
+    except ValueError:
+        pass
+    if raw in _DURATION_CHINESE_NUMBERS:
+        return float(_DURATION_CHINESE_NUMBERS[raw])
+    if "\u5341" not in raw:
+        return None
+    before, _, after = raw.partition("\u5341")
+    tens = _DURATION_CHINESE_NUMBERS.get(before, 1) if before else 1
+    ones = _DURATION_CHINESE_NUMBERS.get(after, 0) if after else 0
+    return float(tens * 10 + ones) if tens is not None and ones is not None else None
+
+
+def detect_minutes(query: str) -> int | None:
+    """Extract explicit trip duration while excluding queue-duration phrases."""
+    queue_duration = re.search(r"\u6392\u961f.{0,12}?\d+\s*\u5206\u949f", query)
+    if queue_duration:
+        query = query.replace(queue_duration.group(0), "")
+    if "\u534a\u5929" in query:
+        return 240
+    match = re.search(
+        r"(\d+(?:\.\d+)?|[\u4e00\u4e8c\u4e24\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341]+)\s*(?:\u4e2a)?\s*(\u534a)?\s*(?:\u5c0f\u65f6|\u949f\u5934|h)\s*(\u534a)?",
+        query,
+        re.I,
+    )
+    if match:
+        hours = _parse_duration_number(match.group(1))
+        if hours is not None:
+            return round(hours * 60) + (30 if match.group(2) or match.group(3) else 0)
+    if re.search(r"\u534a\s*(?:\u4e2a)?\s*(?:\u5c0f\u65f6|\u949f\u5934)", query):
+        return 30
+    match = re.search(r"(\d+|[\u4e00\u4e8c\u4e24\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341]+)\s*\u5206\u949f", query)
+    if match:
+        minutes = _parse_duration_number(match.group(1))
+        if minutes is not None:
+            return round(minutes)
     return None
 
 
@@ -188,6 +249,11 @@ def detect_activity_tags(query: str) -> list[str] | None:
 
 def _memory_assumption_value(state: GraphState, slot: str) -> str | None:
     memory = state.get("memory_context") or {}
+    for fact in reversed(memory.get("memory_facts") or []):
+        if fact.get("slot") != slot or fact.get("value") in (None, ""):
+            continue
+        value = fact["value"]
+        return ",".join(str(item) for item in value) if isinstance(value, list) else str(value)
     current_constraints = memory.get("current_constraints") or {}
     if current_constraints.get(slot) is not None:
         value = current_constraints.get(slot)
@@ -307,10 +373,23 @@ def rule_based_extract(state: GraphState) -> tuple[Constraints, list[Assumption]
                 )
             )
 
-    minutes = detect_minutes(query)
     start_at = detect_start_at(query)
     return_by = detect_return_by(query)
-    if minutes is None and return_by is None:
+    minutes = detect_minutes(query)
+    if minutes is None:
+        derived_minutes = derive_time_budget_minutes(start_at, return_by)
+        if derived_minutes is not None:
+            minutes = derived_minutes
+            assumptions.append(
+                Assumption(
+                    slot="time_budget_minutes",
+                    assumed_value=str(minutes),
+                    source="derived_time_window",
+                    message=f"根据 {start_at} 至 {return_by} 计算可用时长：{minutes} 分钟",
+                    overridable=False,
+                )
+            )
+    if minutes is None:
         memory_minutes = _memory_positive_int(state, "time_budget_minutes")
         if memory_minutes is not None:
             minutes = memory_minutes

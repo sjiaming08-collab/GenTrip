@@ -161,6 +161,10 @@ export async function updateSessionTitle(sessionId: string, title: string): Prom
   return data
 }
 
+export async function deleteSession(sessionId: string): Promise<void> {
+  await api.delete(`/sessions/${sessionId}`)
+}
+
 // ---- SSE 流式 ----
 
 export async function subscribeToStream(
@@ -169,9 +173,16 @@ export async function subscribeToStream(
   onComplete: (route: RoutePlanResponse) => void,
   onError: (err: Error) => void,
 ): Promise<StreamSubscription> {
-  const { data: started } = await api.post<PlanRunStartedResponse>('/routes/plan/runs', request, {
-    timeout: 30000,
-  })
+  let started: PlanRunStartedResponse
+  try {
+    const response = await api.post<PlanRunStartedResponse>('/routes/plan/runs', request, { timeout: 30000 })
+    started = response.data
+  } catch (reason) {
+    if (axios.isAxiosError(reason) && reason.response?.status === 401) {
+      throw new Error('authentication_required')
+    }
+    throw reason
+  }
   const source = subscribeToRunEvents(started.run_id, onProgress, onComplete, onError)
 
   return { source, runId: started.run_id, sessionId: started.session_id }

@@ -26,6 +26,16 @@ class QueueFailureResult:
     dead_lettered: bool
 
 
+@dataclass(frozen=True)
+class DeadLetterPlanRun:
+    message_id: str
+    source_message_id: str
+    attempt: int
+    error: str
+    initial: dict[str, Any]
+    session: dict[str, Any]
+
+
 class PlanTaskQueue(Protocol):
     async def enqueue(self, initial: dict[str, Any], session: dict[str, Any]) -> str: ...
 
@@ -183,3 +193,71 @@ class RedisPlanTaskQueue:
             raise
         except Exception as exc:
             raise QueueUnavailable("unable to record plan queue failure") from exc
+
+    @staticmethod
+    def _parse_dead_letters(raw: list[Any]) -> list[DeadLetterPlanRun]:
+        entries: list[DeadLetterPlanRun] = []
+        for message_id, fields in raw or []:
+            try:
+                entries.append(
+                    DeadLetterPlanRun(
+                        message_id=str(message_id),
+                        source_message_id=str(fields["source_message_id"]),
+                        attempt=int(fields.get("attempt", 0)),
+                        error=str(fields.get("error", "")),
+                        initial=json.loads(fields["initial"]),
+                        session=json.loads(fields["session"]),
+                    )
+                )
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                continue
+        return entries
+
+    async def list_dead_letters(self, *, limit: int = 100) -> list[DeadLetterPlanRun]:
+        try:
+            client = self._client()
+            try:
+                raw = await client.xrevrange(self.dead_letter_stream, max="+", min="-", count=limit)
+            finally:
+                await client.aclose()
+        except QueueUnavailable:
+            raise
+        except Exception as exc:
+            raise QueueUnavailable("unable to list plan queue DLQ") from exc
+        return self._parse_dead_letters(raw)
+
+    async def replay_dead_letter(self, message_id: str) -> str:
+        """Requeue an exhausted payload once while retaining the DLQ audit entry."""
+        try:
+            client = self._client()
+            try:
+                rows = await client.xrange(self.dead_letter_stream, min=message_id, max=message_id, count=1)
+                entries = self._parse_dead_letters(rows)
+                if not entries:
+                    raise KeyError("dead_letter_not_found")
+                replay_key = f"{self.dead_letter_stream}:replayed:{message_id}"
+                if not await client.set(replay_key, "1", nx=True, ex=7 * 24 * 3600):
+                    raise ValueError("dead_letter_already_replayed")
+                entry = entries[0]
+                try:
+                    return str(
+                        await client.xadd(
+                            self.stream,
+                            {
+                                "initial": json.dumps(entry.initial, ensure_ascii=False),
+                                "session": json.dumps(entry.session, ensure_ascii=False),
+                                "replayed_from": message_id,
+                            },
+                        )
+                    )
+                except Exception:
+                    await client.delete(replay_key)
+                    raise
+            finally:
+                await client.aclose()
+        except (KeyError, ValueError):
+            raise
+        except QueueUnavailable:
+            raise
+        except Exception as exc:
+            raise QueueUnavailable("unable to replay plan queue DLQ message") from exc

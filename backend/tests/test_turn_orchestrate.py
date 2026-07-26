@@ -71,6 +71,25 @@ async def test_turn_orchestrate_prefers_llm_intent_adjustment_over_keyword_fallb
 
 
 @pytest.mark.asyncio
+async def test_turn_orchestrate_rejects_llm_replan_for_a_fresh_request(monkeypatch):
+    async def llm_false_replan(*_args, **_kwargs):
+        return (
+            LlmTurnDecision(turn_mode="replan", replan_operation=LlmReplanOp(type="add", new_cuisine="日料")),
+            {"operation": "turn_classify", "status": "success", "model": "test-model"},
+        )
+
+    monkeypatch.setattr(turn_orchestrate_module, "classify_turn", llm_false_replan)
+    state = build_initial_state("适合朋友聚会，黄浦区，人均100元，3小时")
+    state["session_current_route"] = {"plan_id": "old", "stops": [{"poi_name": "旧地点"}]}
+
+    update = await turn_orchestrate(state)
+
+    assert update["turn_mode"] == "plan"
+    assert update["run_mode"] == "plan"
+    assert update["route_intent"]["intent_type"] == "new_plan"
+
+
+@pytest.mark.asyncio
 async def test_reject_reply_completes_with_guided_presentation():
     state = build_initial_state("帮我写代码")
     update = await reject_reply(state)

@@ -14,7 +14,13 @@ async def constraint_extract(state: GraphState) -> dict:
 
     update = phase_update(
         "constraint_extract",
-        summary=f"domains={[d.value for d in constraints.domains]} district={constraints.district} budget={constraints.budget_per_person} cuisines={constraints.preferred_cuisines} excluded={constraints.excluded_categories} assumptions={len(assumptions)}",
+        summary=(
+            f"domains={[d.value for d in constraints.domains]} district={constraints.district} "
+            f"budget={constraints.budget_per_person} duration={constraints.time_budget_minutes}min "
+            f"start={constraints.start_at} return_by={constraints.return_by} "
+            f"cuisines={constraints.preferred_cuisines} excluded={constraints.excluded_categories} "
+            f"assumptions={len(assumptions)}"
+        ),
         constraints=constraints.model_dump(mode="json"),
         assumptions=[a.model_dump(mode="json") for a in assumptions],
         constraint_embedding=None,
@@ -24,5 +30,6 @@ async def constraint_extract(state: GraphState) -> dict:
     update["phase_log"][0].update({
         "llm_operation": llm_call["operation"],
         "llm_status": llm_call["status"],
+        "constraint_source": "llm" if llm_call["status"] == "success" else "rule_fallback",
     })
     return update

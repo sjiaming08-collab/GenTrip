@@ -27,6 +27,7 @@ class ScoredPoi(BaseModel):
     dimension: Optional[str] = None
     queue_wait_min: int = 0
     opening_hours: list[dict] = Field(default_factory=list)
+    opening_hours_text: Optional[str] = None
     ugc_summary: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
     match_reasons: list[str] = Field(default_factory=list)
@@ -47,6 +48,7 @@ class RouteStop(BaseModel):
     travel_time_upper_bound_min: int = 0
     travel_confidence: str = "medium"
     queue_wait_min: int = 0
+    opening_hours_text: Optional[str] = None
     lat: Optional[float] = None
     lng: Optional[float] = None
 

@@ -33,6 +33,7 @@ class PostgisPoiRepository:
                 rows = await conn.fetch(
                     """
                     SELECT poi_id, source, source_poi_id, name, category, district, business_area, address,
+                           opening_hours, recommended_duration_min, field_provenance,
                            rating, price_per_person, queue_wait_min, is_open, raw,
                            ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng
                     FROM pois WHERE is_open = TRUE
@@ -54,6 +55,10 @@ class PostgisPoiRepository:
                     "district": row["district"],
                     "business_area": row["business_area"],
                     "address": row["address"],
+                    "opening_hours": row["opening_hours"],
+                    "opening_hours_text": row["opening_hours"],
+                    "recommended_duration_min": row["recommended_duration_min"],
+                    "field_provenance": dict(row["field_provenance"] or {}),
                     "rating": row["rating"],
                     "avg_price": row["price_per_person"],
                     "queue_minutes": row["queue_wait_min"],

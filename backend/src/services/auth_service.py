@@ -114,7 +114,7 @@ class AuthService:
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.auth_access_token_minutes)
         session_id = str(uuid.uuid4())
         await self._store.create_auth_session(
-            session_id, identity.user.user_id, identity.membership.tenant_id, expires_at.isoformat()
+            session_id, identity.user.user_id, identity.membership.tenant_id, expires_at
         )
         return jwt.encode(
             {

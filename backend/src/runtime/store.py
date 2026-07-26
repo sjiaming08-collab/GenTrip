@@ -8,11 +8,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
+from ..config import settings
 from ..models.profile import UserProfile
 from ..models.auth import AuthUser, TenantMember, TenantMembership
 from ..models.session import SessionState, Turn
 
 DEFAULT_TENANT_ID = "default"
+
+
+class SessionVersionConflict(RuntimeError):
+    """Raised when an older run attempts to overwrite a newer session."""
+
+
+class TenantRunCapacityExceeded(RuntimeError):
+    """Raised when a tenant has reached its durable active-run budget."""
 
 
 def _utc_now() -> str:
@@ -40,6 +49,7 @@ class RuntimeStore(Protocol):
     async def health(self) -> bool: ...
     async def load_session(self, tenant_id: str, session_id: str) -> SessionState | None: ...
     async def save_session(self, session: SessionState) -> None: ...
+    async def delete_session(self, tenant_id: str, session_id: str) -> str: ...
     async def list_sessions(self, tenant_id: str, user_id: str | None, limit: int) -> list[dict[str, Any]]: ...
     async def load_turns(self, tenant_id: str, session_id: str) -> list[Turn]: ...
     async def load_profile(self, tenant_id: str, user_id: str) -> UserProfile | None: ...
@@ -55,7 +65,7 @@ class RuntimeStore(Protocol):
     async def remove_tenant_member(self, tenant_id: str, user_id: str) -> str: ...
     async def append_audit_event(self, tenant_id: str, actor_user_id: str | None, action: str, target_type: str, target_id: str | None, data: dict[str, Any] | None = None) -> None: ...
     async def list_audit_events(self, tenant_id: str, limit: int) -> list[dict[str, Any]]: ...
-    async def create_auth_session(self, session_id: str, user_id: str, tenant_id: str, expires_at: str) -> None: ...
+    async def create_auth_session(self, session_id: str, user_id: str, tenant_id: str, expires_at: datetime) -> None: ...
     async def get_auth_session(self, session_id: str) -> dict[str, Any] | None: ...
     async def list_auth_sessions(self, user_id: str, limit: int) -> list[dict[str, Any]]: ...
     async def revoke_auth_session(self, session_id: str, user_id: str, reason: str) -> bool: ...
@@ -73,6 +83,8 @@ class RuntimeStore(Protocol):
         error_code: str | None = None,
     ) -> None: ...
     async def get_run(self, tenant_id: str, run_id: str) -> dict[str, Any] | None: ...
+    async def save_run_checkpoint(self, tenant_id: str, run_id: str, phase: str, phase_index: int, state: dict[str, Any]) -> None: ...
+    async def list_run_checkpoints(self, tenant_id: str, run_id: str) -> list[dict[str, Any]]: ...
     async def append_event(self, tenant_id: str, run_id: str, event: dict[str, Any]) -> dict[str, Any]: ...
     async def get_events_after(self, tenant_id: str, run_id: str, event_id: int) -> list[dict[str, Any]]: ...
     async def mark_interrupted_runs(self) -> int: ...
@@ -95,6 +107,7 @@ class MemoryRuntimeStore:
         self.audit_events: list[dict[str, Any]] = []
         self.auth_sessions: dict[str, dict[str, Any]] = {}
         self.runs: dict[str, dict[str, Any]] = {}
+        self.run_checkpoints: dict[str, list[dict[str, Any]]] = {}
         self.events: dict[str, list[dict[str, Any]]] = {}
         self._lock = asyncio.Lock()
 
@@ -116,10 +129,29 @@ class MemoryRuntimeStore:
 
     async def save_session(self, session: SessionState) -> None:
         key = (session.tenant_id, session.session_id)
-        self.sessions[key] = session.model_copy(deep=True)
-        stored = self.turns.setdefault(key, {})
-        for turn in session.recent_turns:
-            stored.setdefault(turn.turn_id, turn.model_copy(deep=True))
+        async with self._lock:
+            existing = self.sessions.get(key)
+            if existing is not None and existing.version != session.version:
+                raise SessionVersionConflict(session.session_id)
+            session.version = (existing.version if existing is not None else 0) + 1
+            self.sessions[key] = session.model_copy(deep=True)
+            stored = self.turns.setdefault(key, {})
+            for turn in session.recent_turns:
+                stored.setdefault(turn.turn_id, turn.model_copy(deep=True))
+
+    async def delete_session(self, tenant_id: str, session_id: str) -> str:
+        key = (tenant_id, session_id)
+        if key not in self.sessions:
+            return "not_found"
+        if any(run.get("tenant_id") == tenant_id and run.get("session_id") == session_id and run.get("status") in {"queued", "running"} for run in self.runs.values()):
+            return "active_run"
+        self.sessions.pop(key, None)
+        self.turns.pop(key, None)
+        for run_id, run in list(self.runs.items()):
+            if run.get("tenant_id") == tenant_id and run.get("session_id") == session_id:
+                self.runs.pop(run_id, None)
+                self.events.pop(run_id, None)
+        return "deleted"
 
     async def list_sessions(self, tenant_id: str, user_id: str | None, limit: int) -> list[dict[str, Any]]:
         rows = []
@@ -251,11 +283,11 @@ class MemoryRuntimeStore:
     async def list_audit_events(self, tenant_id: str, limit: int) -> list[dict[str, Any]]:
         return [dict(event) for event in reversed(self.audit_events) if event["tenant_id"] == tenant_id][:limit]
 
-    async def create_auth_session(self, session_id: str, user_id: str, tenant_id: str, expires_at: str) -> None:
+    async def create_auth_session(self, session_id: str, user_id: str, tenant_id: str, expires_at: datetime) -> None:
         async with self._lock:
             self.auth_sessions[session_id] = {
                 "session_id": session_id, "user_id": user_id, "tenant_id": tenant_id,
-                "created_at": _utc_now(), "expires_at": expires_at, "revoked_at": None,
+                "created_at": _utc_now(), "expires_at": expires_at.isoformat(), "revoked_at": None,
                 "revoked_reason": None,
             }
 
@@ -299,6 +331,13 @@ class MemoryRuntimeStore:
             session_id, tenant_id = tenant_id, DEFAULT_TENANT_ID
         assert isinstance(session_id, str)
         async with self._lock:
+            active_runs = [
+                item for item in self.runs.values()
+                if item["tenant_id"] == tenant_id and item["status"] in {"queued", "running"}
+            ]
+            replaced_runs = [item for item in active_runs if item["session_id"] == session_id]
+            if len(active_runs) - len(replaced_runs) >= settings.runtime_tenant_max_active_runs:
+                raise TenantRunCapacityExceeded(tenant_id)
             cancelled = []
             for old_run in self.runs.values():
                 if old_run["tenant_id"] == tenant_id and old_run["session_id"] == session_id and old_run["status"] in {"queued", "running"}:
@@ -338,7 +377,7 @@ class MemoryRuntimeStore:
         run["status"] = status
         if status == "running" and not run["started_at"]:
             run["started_at"] = _utc_now()
-        if status in {"completed", "failed", "cancelled", "degraded"}:
+        if status in {"completed", "failed", "cancelled", "degraded", "timed_out"}:
             run["completed_at"] = _utc_now()
         for key in ("result", "token_usage", "error_code"):
             if key in updates and updates[key] is not None:
@@ -349,6 +388,23 @@ class MemoryRuntimeStore:
             run_id, tenant_id = tenant_id, DEFAULT_TENANT_ID
         run = self.runs.get(run_id)
         return dict(run) if run and run["tenant_id"] == tenant_id else None
+
+    async def save_run_checkpoint(self, tenant_id: str, run_id: str, phase: str, phase_index: int, state: dict[str, Any]) -> None:
+        if await self.get_run(tenant_id, run_id) is None:
+            raise KeyError("run_not_found")
+        checkpoint = {"phase": phase, "phase_index": phase_index, "state": dict(state), "created_at": _utc_now()}
+        entries = self.run_checkpoints.setdefault(run_id, [])
+        for index, existing in enumerate(entries):
+            if existing["phase_index"] == phase_index:
+                entries[index] = checkpoint
+                break
+        else:
+            entries.append(checkpoint)
+
+    async def list_run_checkpoints(self, tenant_id: str, run_id: str) -> list[dict[str, Any]]:
+        if await self.get_run(tenant_id, run_id) is None:
+            return []
+        return [dict(item) for item in self.run_checkpoints.get(run_id, [])]
 
     async def append_event(self, tenant_id: str, run_id: str, event: dict[str, Any]) -> dict[str, Any]:
         if await self.get_run(tenant_id, run_id) is None:
@@ -457,12 +513,16 @@ class PostgresRuntimeStore:
                     VALUES ($1, $2, 1, $3::jsonb)
                     ON CONFLICT (tenant_id, session_id) DO UPDATE
                     SET version = sessions.version + 1, payload = EXCLUDED.payload, updated_at = NOW()
+                    WHERE sessions.version = $4
                     RETURNING version
                     """,
                     session.tenant_id,
                     session.session_id,
                     payload,
+                    session.version,
                 )
+                if row is None:
+                    raise SessionVersionConflict(session.session_id)
                 session.version = int(row["version"])
                 for turn in session.recent_turns:
                     await conn.execute(
@@ -476,6 +536,27 @@ class PostgresRuntimeStore:
                         session.session_id,
                         turn.model_dump(mode="json"),
                     )
+
+    async def delete_session(self, tenant_id: str, session_id: str) -> str:
+        await self.initialize()
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    "SELECT 1 FROM sessions WHERE tenant_id = $1 AND session_id = $2 FOR UPDATE",
+                    tenant_id,
+                    session_id,
+                )
+                if row is None:
+                    return "not_found"
+                active = await conn.fetchval(
+                    "SELECT EXISTS(SELECT 1 FROM runs WHERE tenant_id = $1 AND session_id = $2 AND status IN ('queued', 'running'))",
+                    tenant_id,
+                    session_id,
+                )
+                if active:
+                    return "active_run"
+                await conn.execute("DELETE FROM sessions WHERE tenant_id = $1 AND session_id = $2", tenant_id, session_id)
+        return "deleted"
 
     async def list_sessions(self, tenant_id: str, user_id: str | None, limit: int) -> list[dict[str, Any]]:
         await self.initialize()
@@ -708,11 +789,11 @@ class PostgresRuntimeStore:
             )
         return [dict(row) for row in rows]
 
-    async def create_auth_session(self, session_id: str, user_id: str, tenant_id: str, expires_at: str) -> None:
+    async def create_auth_session(self, session_id: str, user_id: str, tenant_id: str, expires_at: datetime) -> None:
         await self.initialize()
         async with self._pool.acquire() as conn:
             await conn.execute(
-                "INSERT INTO auth_sessions (session_id, user_id, tenant_id, expires_at) VALUES ($1, $2, $3, $4::timestamptz)",
+                "INSERT INTO auth_sessions (session_id, user_id, tenant_id, expires_at) VALUES ($1, $2, $3, $4)",
                 session_id, user_id, tenant_id, expires_at,
             )
 
@@ -759,6 +840,17 @@ class PostgresRuntimeStore:
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute("SELECT pg_advisory_xact_lock(hashtext($1))", f"{tenant_id}:{session_id}")
+                capacity = await conn.fetchval(
+                    """
+                    SELECT COUNT(*)
+                    FROM runs
+                    WHERE tenant_id = $1 AND status IN ('queued', 'running') AND session_id != $2
+                    """,
+                    tenant_id,
+                    session_id,
+                )
+                if int(capacity or 0) >= settings.runtime_tenant_max_active_runs:
+                    raise TenantRunCapacityExceeded(tenant_id)
                 await conn.execute(
                     """
                     INSERT INTO sessions (tenant_id, session_id, version, payload)
@@ -821,7 +913,7 @@ class PostgresRuntimeStore:
                     token_usage = COALESCE($4::jsonb, token_usage),
                     error_code = COALESCE($5, error_code),
                     started_at = CASE WHEN $2 = 'running' AND started_at IS NULL THEN NOW() ELSE started_at END,
-                    completed_at = CASE WHEN $2 IN ('completed', 'failed', 'cancelled', 'degraded') THEN NOW() ELSE completed_at END
+                    completed_at = CASE WHEN $2 IN ('completed', 'failed', 'cancelled', 'degraded', 'timed_out') THEN NOW() ELSE completed_at END
                 WHERE run_id = $1::uuid
                 """,
                 run_id,
@@ -847,6 +939,34 @@ class PostgresRuntimeStore:
             if run.get(key) is not None:
                 run[key] = _json_object(run[key])
         return run
+
+    async def save_run_checkpoint(self, tenant_id: str, run_id: str, phase: str, phase_index: int, state: dict[str, Any]) -> None:
+        await self.initialize()
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO run_checkpoints (run_id, tenant_id, phase, phase_index, state)
+                SELECT run_id, tenant_id, $3, $4, $5::jsonb
+                FROM runs WHERE tenant_id = $1 AND run_id = $2::uuid
+                ON CONFLICT (run_id, phase_index) DO UPDATE
+                    SET phase = EXCLUDED.phase, state = EXCLUDED.state, created_at = NOW()
+                """,
+                tenant_id, run_id, phase, phase_index, state,
+            )
+
+    async def list_run_checkpoints(self, tenant_id: str, run_id: str) -> list[dict[str, Any]]:
+        await self.initialize()
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT phase, phase_index, state, created_at
+                FROM run_checkpoints
+                WHERE tenant_id = $1 AND run_id = $2::uuid
+                ORDER BY phase_index
+                """,
+                tenant_id, run_id,
+            )
+        return [{**dict(row), "state": _json_object(row["state"])} for row in rows]
 
     async def append_event(self, tenant_id: str, run_id: str, event: dict[str, Any]) -> dict[str, Any]:
         await self.initialize()

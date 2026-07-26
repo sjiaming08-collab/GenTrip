@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { addTenantMember, listAuthSessions, listTenantAuditEvents, listTenantMembers, removeTenantMember, revokeAuthSession, revokeOtherAuthSessions, updateTenantMemberRole, type AuthIdentity } from '../api'
 import type { AuditEvent, AuthSession, RoutePlanResponse, SSEProgressEvent, TenantMember } from '../types'
+import { nextPhase, presentPhase, presentStatus, stageOutcome } from '../utils/runtimePresentation'
 
 const props = defineProps<{
   open: boolean
@@ -36,7 +37,17 @@ const liveEvents = computed<SSEProgressEvent[]>(() => {
     data: { phase_log_entry: entry },
   }))
 })
-const latestEvent = computed(() => liveEvents.value[liveEvents.value.length - 1] || null)
+const displayedEvents = computed<SSEProgressEvent[]>(() => {
+  const events = liveEvents.value
+  const next = props.loading ? nextPhase(events[events.length - 1]) : null
+  if (!next) return events
+  return [...events, {
+    phase: next,
+    status: 'running',
+    summary: presentPhase(next).description,
+    data: {},
+  }]
+})
 const liveLlmCalls = computed(() => {
   const event = [...liveEvents.value].reverse().find((item) => Array.isArray(item.data?.llm_calls))
   return (event?.data?.llm_calls as Record<string, unknown>[] | undefined) ?? props.route?.meta.llm_calls ?? []
@@ -51,7 +62,7 @@ const liveUsage = computed(() => {
 })
 
 function details(event: SSEProgressEvent) {
-  return Object.entries(event.data || {}).filter(([key, value]) => !['llm_calls', 'tool_calls', 'phase_log_entry'].includes(key) && value !== null && value !== undefined && value !== '' && !(Array.isArray(value) && !value.length)).slice(0, 6)
+  return Object.entries(event.data || {}).filter(([key, value]) => !['llm_calls', 'tool_calls', 'phase_log_entry', 'extracted_constraints'].includes(key) && value !== null && value !== undefined && value !== '' && !(Array.isArray(value) && !value.length)).slice(0, 6)
 }
 function displayValue(value: unknown) {
   if (Array.isArray(value)) return value.join('、')
@@ -124,10 +135,10 @@ watch(() => props.identity?.tenant.tenant_id, () => { authSessions.value = []; m
           <div class="metric-grid"><div><span>LLM 调用</span><strong>{{ liveUsage?.call_count ?? 0 }}</strong></div><div><span>总 tokens</span><strong>{{ liveUsage?.total_tokens ?? 0 }}</strong></div><div><span>实时节点</span><strong>{{ liveEvents.length }}</strong></div></div>
 
           <section class="console-section">
-            <div class="section-heading"><h3>执行轨迹</h3><span>{{ latestEvent?.phase || '等待任务' }}</span></div>
-            <ol v-if="liveEvents.length" class="phase-list">
-              <li v-for="(event, index) in liveEvents" :key="`${event.event_id || event.phase}-${index}`" :class="{ current: loading && index === liveEvents.length - 1 }">
-                <span class="phase-status" :class="event.status || 'running'" /><div class="phase-copy"><div class="phase-title"><strong>{{ event.phase }}</strong><small>{{ event.status || 'running' }}</small></div><p>{{ event.summary || '节点已收到执行机会' }}</p><div v-if="details(event).length" class="event-details"><span v-for="([key, value]) in details(event)" :key="key"><b>{{ key }}</b>{{ displayValue(value) }}</span></div></div>
+            <div class="section-heading"><h3>执行轨迹</h3><span>{{ presentPhase(displayedEvents[displayedEvents.length - 1]?.phase || 'runtime').title }}</span></div>
+            <ol v-if="displayedEvents.length" class="phase-list">
+              <li v-for="(event, index) in displayedEvents" :key="`${event.event_id || event.phase}-${index}`" :class="{ current: loading && index === displayedEvents.length - 1 }">
+                <span class="phase-status" :class="event.status || 'running'" /><div class="phase-copy"><div class="phase-title"><strong>{{ presentPhase(event.phase).title }}</strong><small>{{ presentStatus(event.status) }}</small></div><p>{{ event.status === 'running' ? presentPhase(event.phase).description : stageOutcome(event) }}</p><div v-if="details(event).length" class="event-details"><span v-for="([key, value]) in details(event)" :key="key"><b>{{ key }}</b>{{ displayValue(value) }}</span></div></div>
               </li>
             </ol><p v-else class="empty-state">提交任务后，这里会实时显示每个节点的输出。</p>
           </section>

@@ -35,6 +35,7 @@ export interface RouteStop {
   travel_source?: string
   travel_estimated?: boolean
   queue_wait_min: number
+  opening_hours_text?: string | null
 }
 
 export interface RoutePlan {

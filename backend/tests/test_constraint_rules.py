@@ -12,6 +12,7 @@ from src.services.constraint_rules import (
     detect_queue_tolerance_minutes,
     detect_return_by,
     detect_start_at,
+    derive_time_budget_minutes,
     rule_based_extract,
 )
 
@@ -25,6 +26,11 @@ def test_detect_budget_and_minutes():
     assert detect_budget("预算200元") == 200
     assert detect_minutes("逛吃3小时") == 180
     assert detect_minutes("半天") == 240
+
+
+def test_derive_time_budget_from_explicit_time_window():
+    assert derive_time_budget_minutes("14:00", "18:00") == 240
+    assert derive_time_budget_minutes("18:00", "14:00") is None
 
 
 def test_detect_return_by():
@@ -96,3 +102,23 @@ def test_rule_based_extract_preserves_start_and_queue_constraints():
     assert constraints.queue_tolerance_minutes == 30
     assert "start_at" not in {item.slot for item in assumptions}
     assert "queue_tolerance_minutes" not in {item.slot for item in assumptions}
+
+
+def test_rule_based_extract_derives_duration_from_start_and_return_by():
+    constraints, assumptions = rule_based_extract(
+        build_initial_state("黄浦区下午2点看展，18点前回")
+    )
+
+    assert constraints.start_at == "14:00"
+    assert constraints.return_by == "18:00"
+    assert constraints.time_budget_minutes == 240
+    duration = next(item for item in assumptions if item.slot == "time_budget_minutes")
+    assert duration.source == "derived_time_window"
+    assert duration.overridable is False
+
+
+def test_rule_based_extract_keeps_default_duration_when_only_return_by_is_given():
+    constraints, assumptions = rule_based_extract(build_initial_state("黄浦区18点前回，喝咖啡"))
+
+    assert constraints.time_budget_minutes == 180
+    assert any(item.slot == "time_budget_minutes" and item.source == "scene_default" for item in assumptions)

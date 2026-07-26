@@ -27,4 +27,5 @@ class MemoryContext(BaseModel):
     confirmed_stop_ids: list[str] = Field(default_factory=list)
     rejected_poi_ids: list[str] = Field(default_factory=list)
     recent_turns: list[dict[str, Any]] = Field(default_factory=list)
+    memory_facts: list[dict[str, Any]] = Field(default_factory=list)
     user_profile: dict[str, Any] = Field(default_factory=dict)

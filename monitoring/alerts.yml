@@ -15,3 +15,17 @@ groups:
           severity: warning
         annotations:
           summary: GenTrip is repeatedly serving degraded plans
+      - alert: GenTripRunTimeouts
+        expr: increase(gentrip_plan_runs_total{status="timed_out"}[10m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: GenTrip plan runs are exceeding their runtime deadline
+      - alert: GenTripHighLLMTokenRate
+        expr: increase(gentrip_llm_tokens_total{token_type="total"}[15m]) > 50000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: GenTrip LLM token usage is above the local operating threshold

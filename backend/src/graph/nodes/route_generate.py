@@ -455,6 +455,7 @@ async def _build_route(
                 travel_time_upper_bound_min=estimate.max_duration_min if estimate else 0,
                 travel_confidence=estimate.confidence if estimate else "high",
                 queue_wait_min=queue_wait,
+                opening_hours_text=poi.opening_hours_text,
                 lat=poi.lat,
                 lng=poi.lng,
             )

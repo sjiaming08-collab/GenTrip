@@ -18,6 +18,11 @@ def clear_poi_retrieval_cache():
     poi_retrieval.invalidate_index_cache()
 
 
+def test_missing_poi_address_does_not_break_district_matching():
+    assert poi_retrieval.parse_district(None, ["district-a"]) == ""
+    assert poi_retrieval._poi_district({"address": None}) == ""
+
+
 def test_retrieve_chinese_cuisine_in_xuhui():
     result = retrieve_pois_with_meta(
         district="徐汇区",

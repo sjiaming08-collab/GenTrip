@@ -6,6 +6,7 @@ from fastapi.responses import PlainTextResponse
 from ..config import settings
 from ..observability.metrics import runtime_metrics
 from ..runtime.task_queue import QueueUnavailable
+from ..runtime.store import TenantRunCapacityExceeded
 from .container import plan_service
 from .presentation import response_from_state
 from .tenant_auth import RequestIdentity, resolve_identity
@@ -18,12 +19,16 @@ from .schemas import (
     AuthSessionResponse,
     AuditEventListResponse,
     AuditEventResponse,
+    DeadLetterRunListResponse,
+    DeadLetterRunResponse,
     AuthTenantResponse,
     AuthUserResponse,
     LoginRequest,
     PlanRequest,
     PlanResponse,
     PlanRunStartedResponse,
+    RunCheckpointListResponse,
+    RunCheckpointResponse,
     RunStatusResponse,
     SessionListResponse,
     SessionResponse,
@@ -372,21 +377,38 @@ async def update_session(http_request: Request, session_id: str, request: Sessio
     )
 
 
+@router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_session(request: Request, session_id: str, tenant_id: str = "default"):
+    identity = await _request_identity(request, tenant_id)
+    await _owned_session(session_id, identity)
+    outcome = await plan_service.delete_session(session_id, tenant_id=identity.tenant_id)
+    if outcome == "active_run":
+        raise HTTPException(status_code=409, detail="session_has_active_run")
+    if outcome != "deleted":
+        raise HTTPException(status_code=404, detail="session_not_found")
+    await _audit(identity, "session.deleted", "session", session_id)
+
+
 @router.post("/routes/plan", response_model=PlanResponse)
 async def plan_route(http_request: Request, request: PlanRequest):
     identity = await _request_identity(http_request, request.tenant_id)
-    state = await plan_service.run_plan(
-        request.query,
-        tenant_id=identity.tenant_id,
-        user_id=identity.user_id or request.user_id,
-        user_lat=request.lat,
-        user_lng=request.lng,
-        session_id=request.session_id,
-    )
+    try:
+        state = await plan_service.run_plan(
+            request.query,
+            tenant_id=identity.tenant_id,
+            user_id=identity.user_id or request.user_id,
+            user_lat=request.lat,
+            user_lng=request.lng,
+            session_id=request.session_id,
+        )
+    except TenantRunCapacityExceeded as exc:
+        raise HTTPException(status_code=429, detail="tenant_run_capacity_exceeded") from exc
     if state.get("run_status") == "failed":
         raise HTTPException(status_code=500, detail=state.get("error") or "plan_run_failed")
     if state.get("run_status") == "cancelled":
         raise HTTPException(status_code=409, detail="plan_run_cancelled")
+    if state.get("run_status") == "timed_out":
+        raise HTTPException(status_code=504, detail="plan_run_timed_out")
     return response_from_state(state)
 
 
@@ -405,6 +427,8 @@ async def start_plan_run(http_request: Request, request: PlanRequest):
         )
     except QueueUnavailable as exc:
         raise HTTPException(status_code=503, detail="plan_queue_unavailable") from exc
+    except TenantRunCapacityExceeded as exc:
+        raise HTTPException(status_code=429, detail="tenant_run_capacity_exceeded") from exc
     return PlanRunStartedResponse(**started)
 
 
@@ -423,6 +447,57 @@ async def get_plan_run(request: Request, run_id: str, tenant_id: str = "default"
         error_code=run.get("error_code"),
         result=response_from_state(result) if result and result.get("run_status") != "failed" else None,
     )
+
+
+@router.get("/routes/plan/runs/{run_id}/checkpoints", response_model=RunCheckpointListResponse)
+async def list_plan_run_checkpoints(request: Request, run_id: str, tenant_id: str = "default"):
+    identity = await _request_identity(request, tenant_id)
+    run = await plan_service.get_run(run_id, tenant_id=identity.tenant_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="run_not_found")
+    await _owned_run(run, identity)
+    checkpoints = await plan_service.list_run_checkpoints(run_id, tenant_id=identity.tenant_id)
+    return RunCheckpointListResponse(
+        run_id=run_id,
+        checkpoints=[RunCheckpointResponse(**checkpoint) for checkpoint in checkpoints],
+    )
+
+
+@router.get("/runtime/dlq", response_model=DeadLetterRunListResponse)
+async def list_runtime_dead_letters(request: Request, limit: int = 100):
+    identity = await _request_identity(request)
+    _require_owner(identity)
+    try:
+        entries = await plan_service.list_dead_letters(limit=min(max(limit, 1), 200))
+    except QueueUnavailable as exc:
+        raise HTTPException(status_code=503, detail="plan_queue_unavailable") from exc
+    return DeadLetterRunListResponse(entries=[
+        DeadLetterRunResponse(
+            message_id=entry.message_id,
+            source_message_id=entry.source_message_id,
+            attempt=entry.attempt,
+            error=entry.error,
+            run_id=entry.initial.get("run_id"),
+            session_id=entry.initial.get("session_id"),
+        )
+        for entry in entries
+    ])
+
+
+@router.post("/runtime/dlq/{message_id}/replay")
+async def replay_runtime_dead_letter(request: Request, message_id: str):
+    identity = await _request_identity(request)
+    _require_owner(identity)
+    try:
+        replay_message_id = await plan_service.replay_dead_letter(message_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="dead_letter_not_found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="dead_letter_already_replayed") from exc
+    except QueueUnavailable as exc:
+        raise HTTPException(status_code=503, detail="plan_queue_unavailable") from exc
+    await _audit(identity, "runtime.dlq_replayed", "queue_message", message_id, {"replay_message_id": replay_message_id})
+    return {"message_id": message_id, "replay_message_id": replay_message_id, "status": "queued"}
 
 
 @router.post("/routes/plan/runs/{run_id}/cancel")

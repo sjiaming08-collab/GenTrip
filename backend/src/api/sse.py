@@ -15,7 +15,7 @@ from ..runtime.task_queue import QueueUnavailable
 from ..services.auth_service import AuthService
 
 router = APIRouter()
-_TERMINAL = {"completed", "failed", "cancelled", "degraded"}
+_TERMINAL = {"completed", "failed", "cancelled", "degraded", "timed_out"}
 
 
 async def _request_identity(request: Request, requested_tenant: str | None = None) -> RequestIdentity:

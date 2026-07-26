@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import RoutePlanner from './components/RoutePlanner.vue'
-import ItineraryTimeline from './components/ItineraryTimeline.vue'
-import MapView from './components/MapView.vue'
 import FeedbackPanel from './components/FeedbackPanel.vue'
-import ProgressBar from './components/ProgressBar.vue'
 import AuthGate from './components/AuthGate.vue'
 import RuntimeConsole from './components/RuntimeConsole.vue'
-import { getCurrentUser, getHealth, getSession, listSessions, listWorkspaces, logout as logoutRequest, submitFeedback as saveFeedback, switchWorkspace, updateSessionTitle, type AuthIdentity, type Workspace } from './api'
+import RouteCanvas from './components/RouteCanvas.vue'
+import RuntimeProgress from './components/RuntimeProgress.vue'
+import { deleteSession, getCurrentUser, getHealth, getSession, listSessions, listWorkspaces, logout as logoutRequest, submitFeedback as saveFeedback, switchWorkspace, updateSessionTitle, type AuthIdentity, type Workspace } from './api'
 import { useRoutePlan } from './composables/useRoutePlan'
 import type { FeedbackRequest, RoutePlanRequest, RoutePlanResult, RouteStop, SessionDetail } from './types'
 
@@ -62,13 +61,9 @@ const authRequired = ref(false)
 const authUser = ref<AuthIdentity | null>(null)
 const workspaces = ref<Workspace[]>([])
 const consoleOpen = ref(false)
+const preferencesOpen = ref(false)
 const llmEnabled = ref(false)
 const llmModel = ref<string | null>(null)
-
-const selectedStopIndex = computed(() => {
-  if (!selectedStop.value || !selectedResult.value) return -1
-  return selectedResult.value.route.stops.findIndex((stop) => stop.poi_id === selectedStop.value?.poi_id)
-})
 
 const replyType = computed(() => currentRoute.value?.reply_type ?? 'route')
 const isDiff = computed(() => replyType.value === 'diff')
@@ -77,10 +72,6 @@ const isDegraded = computed(() => replyType.value === 'degraded_route')
 const suggestionMoves = computed(() => currentRoute.value?.meta?.next_suggested_user_moves ?? [])
 const activeSession = computed(() => historySessions.value.find((item) => item.sessionId === sessionId.value))
 const activeTitle = computed(() => activeSession.value?.title || '新路线对话')
-const PLAN_PHASES = [
-  'turn_orchestrate', 'constraint_extract', 'planning_decision', 'geo_resolve', 'poi_retrieve',
-  'route_generate', 'route_validate', 'route_evaluate', 'route_present',
-]
 
 function nowTime() {
   return new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(new Date())
@@ -184,6 +175,15 @@ async function handleSubmit(request: RoutePlanRequest) {
   addMessage('user', request.query.trim())
   await submitQuery(enriched)
 
+  if (error.value === 'authentication_required' && authRequired.value) {
+    authUser.value = null
+    workspaces.value = []
+    sessionId.value = null
+    historySessions.value = []
+    messages.value = []
+    return
+  }
+
   if (currentRoute.value?.session_id) {
     sessionId.value = currentRoute.value.session_id
     addMessage('assistant', presentation.value?.summary || '路线已生成，已在下方展示。')
@@ -254,6 +254,19 @@ async function saveTitle() {
   editingTitle.value = false
 }
 
+async function removeActiveSession() {
+  if (!sessionId.value || loading.value) return
+  if (!window.confirm('删除此会话及其路线记录？此操作无法撤销。')) return
+  const deletedId = sessionId.value
+  try {
+    await deleteSession(deletedId)
+    historySessions.value = historySessions.value.filter((item) => item.sessionId !== deletedId)
+    startNewSession()
+  } catch (reason) {
+    error.value = reason instanceof Error ? reason.message : '删除会话失败，请稍后重试。'
+  }
+}
+
 function handleSelectResult(result: RoutePlanResult) {
   selectedStop.value = null
   selectResult(result)
@@ -261,11 +274,6 @@ function handleSelectResult(result: RoutePlanResult) {
 
 function handleSelectStop(stop: RouteStop) {
   selectedStop.value = stop
-}
-
-function handleSelectPoi(poiId: string) {
-  const stop = selectedResult.value?.route.stops.find((item) => item.poi_id === poiId)
-  if (stop) selectedStop.value = stop
 }
 
 async function handleFeedback(feedback: FeedbackRequest) {
@@ -336,6 +344,13 @@ watch(
       </div>
 
       <button class="new-session" type="button" @click="startNewSession">新建路线对话</button>
+      <button
+        v-if="activeSession"
+        class="rail-session-delete"
+        type="button"
+        :disabled="loading"
+        @click="removeActiveSession"
+      >删除当前会话</button>
 
       <div class="rail-heading">
         <span>最近会话</span>
@@ -393,11 +408,13 @@ watch(
             </template>
           </div>
         </div>
-        <div class="session-state">
-          <span class="state-dot" />
-          {{ loading ? '规划中' : '可继续调整' }}
+        <div class="header-actions">
+          <div class="session-state">
+            <span class="state-dot" />
+            {{ loading ? '规划中' : '可继续调整' }}
+          </div>
+          <button class="console-trigger" type="button" @click="consoleOpen = true">运行与工作区</button>
         </div>
-        <button class="console-trigger" type="button" @click="consoleOpen = true">运行与工作区</button>
       </header>
 
       <section ref="conversationThread" class="conversation-thread" aria-live="polite">
@@ -422,7 +439,7 @@ watch(
             <span class="avatar">G</span>
             <div><strong>正在规划路线</strong><span>{{ currentPhase }}</span></div>
           </div>
-          <ProgressBar :current-phase="currentPhase" :phases="PLAN_PHASES" @cancel="cancelPlanning" />
+          <RuntimeProgress :events="runtimeEvents" :loading="loading" :current-phase="currentPhase" @cancel="cancelPlanning" />
         </article>
 
         <p v-if="error" class="error-state">{{ error }}</p>
@@ -468,21 +485,27 @@ watch(
               </button>
             </div>
 
-            <div class="result-layout">
-              <ItineraryTimeline :result="selectedResult" :current-stop-index="selectedStopIndex" @select-stop="handleSelectStop" />
-              <MapView :stops="selectedResult?.route.stops" :selected-stop-id="selectedStop?.poi_id ?? null" @select-poi="handleSelectPoi" />
-            </div>
+            <RouteCanvas :result="selectedResult" :selected-stop-id="selectedStop?.poi_id ?? null" @select-stop="handleSelectStop" />
             <FeedbackPanel :result="selectedResult" :session-id="currentRoute.session_id" @submit-feedback="handleFeedback" />
           </template>
         </section>
       </section>
 
       <div class="composer-dock">
+        <div class="planning-context" :class="{ inactive: !useDefaults }">
+          <span>默认约束</span>
+          <button type="button" @click="preferencesOpen = true">{{ defaultDistrict }}</button>
+          <button type="button" @click="preferencesOpen = true">人均 {{ defaultBudget }} 元</button>
+          <button type="button" @click="preferencesOpen = true">{{ defaultDuration / 60 }} 小时</button>
+          <button class="context-toggle" type="button" @click="useDefaults = !useDefaults">{{ useDefaults ? '已启用' : '未启用' }}</button>
+          <button class="context-settings" type="button" @click="preferencesOpen = true">调整</button>
+        </div>
         <RoutePlanner :is-loading="loading" @submit="handleSubmit" />
       </div>
     </main>
 
-    <aside class="settings-rail">
+    <aside class="settings-rail" :class="{ open: preferencesOpen }">
+      <button class="close-preferences" type="button" @click="preferencesOpen = false">关闭</button>
       <div class="settings-header">
         <p class="eyebrow">规划偏好</p>
         <h2>这次怎么安排</h2>
@@ -548,6 +571,7 @@ watch(
 .brand-lockup span { display: block; margin-top: 2px; color: #749184; font-size: 12px; }
 .new-session { width: 100%; padding: 10px 12px; border: 1px solid #167b59; border-radius: 7px; background: #167b59; color: #fff; cursor: pointer; font-weight: 700; }
 .new-session:hover { background: #0e6748; }
+.rail-session-delete { width: 100%; margin-top: 7px; padding: 7px 10px; border: 1px solid #ebcbc6; border-radius: 6px; background: transparent; color: #9c4a43; cursor: pointer; font-size: 12px; text-align: left; }.rail-session-delete:hover { border-color: #cc8b83; background: #fff6f4; color: #82352f; }.rail-session-delete:disabled { cursor: not-allowed; opacity: .45; }
 .rail-heading { display: flex; justify-content: space-between; align-items: center; margin: 28px 6px 10px; color: #608071; font-size: 12px; font-weight: 700; letter-spacing: .06em; }
 .count { display: inline-flex; min-width: 20px; justify-content: center; padding: 2px 6px; border-radius: 999px; background: #e8f4ec; color: #177657; }
 .session-list { display: grid; gap: 5px; overflow-y: auto; }
@@ -572,7 +596,7 @@ watch(
 .title-edit { padding: 3px 0; border: 0; background: transparent; color: #398364; font-size: 12px; cursor: pointer; }
 .title-edit:hover { color: #135e42; text-decoration: underline; }
 .title-input { width: min(360px, 58vw); padding: 2px 0 4px; border: 0; border-bottom: 1px solid #57a77d; background: transparent; color: #18362a; font-family: Georgia, "Noto Serif SC", serif; font-size: 23px; font-weight: 600; outline: none; }
-.session-state { display: flex; align-items: center; gap: 9px; color: #5e7f70; font-size: 13px; margin-left: auto; }.console-trigger, .console-rail-button { border: 1px solid #bedfca; border-radius: 6px; background: #fff; color: #276a4c; cursor: pointer; font-size: 12px; }.console-trigger { margin-left: 12px; padding: 7px 9px; }.console-trigger:hover, .console-rail-button:hover { border-color: #167b59; background: #edf8f0; }.console-rail-button { width: 100%; margin-top: 12px; padding: 8px 10px; text-align: left; }
+.header-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }.session-state { display: flex; align-items: center; gap: 9px; color: #5e7f70; font-size: 13px; }.console-trigger, .console-rail-button { border: 1px solid #bedfca; border-radius: 6px; background: #fff; color: #276a4c; cursor: pointer; font-size: 12px; }.console-trigger { padding: 7px 9px; }.console-trigger:hover, .console-rail-button:hover { border-color: #167b59; background: #edf8f0; }.console-rail-button { width: 100%; margin-top: 12px; padding: 8px 10px; text-align: left; }
 .conversation-thread { width: min(100%, 850px); min-height: 0; flex: 1 1 auto; margin: 0 auto; overflow-y: auto; overscroll-behavior: contain; padding: 34px 0; scroll-behavior: smooth; }
 .message { display: flex; gap: 11px; margin-bottom: 20px; }
 .assistant-message { max-width: 82%; }
@@ -608,4 +632,31 @@ watch(
 
 @media (max-width: 1180px) { .agent-shell { grid-template-columns: 236px minmax(0, 1fr); }.settings-rail { display: none; }.conversation-workspace { padding: 0 24px; } }
 @media (max-width: 760px) { :global(body) { overflow: auto; }.agent-shell { height: auto; min-height: 100dvh; display: block; overflow: visible; }.history-rail { min-height: auto; height: auto; padding: 16px; overflow: visible; border-right: 0; border-bottom: 1px solid #dcebe1; }.brand-lockup { padding-bottom: 14px; }.new-session { width: auto; }.rail-heading { margin-top: 18px; }.session-list { grid-auto-flow: column; grid-auto-columns: minmax(190px, 72%); overflow-x: auto; }.rail-footer { display: none; }.conversation-workspace { height: 100dvh; padding: 0 16px; }.workspace-header { min-height: 76px; }.workspace-header h1 { font-size: 19px; }.conversation-thread { padding-top: 22px; }.assistant-message, .user-message .message-bubble { max-width: 88%; }.result-layout { grid-template-columns: 1fr; }.composer-dock { padding-bottom: 14px; } }
+/* Planning workspace overrides. The results canvas carries the primary visual weight. */
+.agent-shell { grid-template-columns: 240px minmax(0, 1fr); background: #f5f7f4; }
+.history-rail { padding: 22px 14px 16px; background: #fcfdfb; }
+.conversation-workspace { padding: 0 28px; }
+.workspace-header { min-height: 82px; background: #f5f7f4; }
+.conversation-thread { width: min(100%, 1040px); padding: 26px 0 34px; }
+.composer-dock { width: min(100%, 1040px); padding: 8px 0 18px; background: #f5f7f4; }
+.message { margin-bottom: 15px; }
+.message-bubble { border-color: #d5e1d8; box-shadow: none; }
+.assistant-progress { margin: 16px 0; padding: 0; border: 0; background: transparent; }
+.assistant-progress .progress-copy { display: none; }
+.assistant-progress :deep(.runtime-progress) { margin: 0; }
+.route-response { margin-top: 22px; }
+.reply-summary { padding: 0 0 18px; border-top: 0; }
+.reply-summary h2 { font-size: 26px; }
+.route-tabs { margin: 15px 0; }
+.planning-context { display:flex;align-items:center;gap:6px;min-height:31px;padding:0 1px 7px;overflow-x:auto;color:#71897e;white-space:nowrap; }
+.planning-context>span { margin-right:3px;color:#789087;font-size:11px;font-weight:700; }
+.planning-context button { padding:4px 7px;border:1px solid #d5e3d9;border-radius:4px;background:#fff;color:#426959;font-size:11px;cursor:pointer; }
+.planning-context .context-toggle { margin-left:auto;border-color:#b5d4c0;color:#247252; }
+.planning-context .context-settings { color:#8a5c2b; }
+.planning-context.inactive button:not(.context-toggle):not(.context-settings) { opacity:.45; }
+.settings-rail { position:fixed;z-index:30;top:0;right:0;width:min(330px,100vw);height:100dvh;padding-top:56px;overflow-y:auto;border-left:1px solid #d5e3d9;box-shadow:-18px 0 42px rgba(29,57,43,.16);transform:translateX(105%);transition:transform .2s ease;background:#fff; }
+.settings-rail.open { transform:translateX(0); }
+.close-preferences { position:absolute;top:17px;right:18px;padding:5px 8px;border:1px solid #cbdcd1;border-radius:4px;background:#fff;color:#2b7051;font-size:12px;cursor:pointer; }
+@media (max-width: 1180px) { .agent-shell { grid-template-columns: 220px minmax(0, 1fr); } }
+@media (max-width: 760px) { .conversation-workspace { padding:0 14px; }.workspace-header{min-height:68px}.workspace-header h1{max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.session-state{display:none}.header-actions{gap:7px}.console-trigger{padding:6px 7px;font-size:11px}.conversation-thread{padding:18px 0 24px}.composer-dock{padding-bottom:12px}.planning-context{padding-top:5px}.planning-context>span{display:none}.planning-context .context-settings{display:inline-block}.settings-rail{width:100vw}.route-response{margin-top:18px} }
 </style>

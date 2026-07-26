@@ -66,7 +66,9 @@ class _DomainRetrieveOutcome:
     retrieval_trace: dict = field(default_factory=dict)
 
 
-def parse_district(address: str, districts: list[str]) -> str:
+def parse_district(address: str | None, districts: list[str]) -> str:
+    if not isinstance(address, str):
+        return ""
     for district in districts:
         if district in address:
             return district
@@ -224,6 +226,7 @@ def to_scored_poi(
         dimension=dimension.value,
         queue_wait_min=_poi_queue_wait_min(poi),
         opening_hours=[dict(item) for item in poi.get("opening_hours") or [] if isinstance(item, dict)],
+        opening_hours_text=str(poi.get("opening_hours_text") or "") or None,
         ugc_summary=str(poi.get("ugc_summary") or "") or None,
         tags=tags,
         match_reasons=reasons,

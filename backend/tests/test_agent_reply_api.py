@@ -53,6 +53,24 @@ async def test_session_history_lists_turns_and_persists_title(client):
 
 
 @pytest.mark.asyncio
+async def test_session_delete_removes_history_and_detail(client):
+    session_id = "api-session-delete-001"
+    created = await client.post(
+        "/api/v1/routes/plan",
+        json={"query": "stock market update", "session_id": session_id, "user_id": "delete-user"},
+    )
+    assert created.status_code == 200
+
+    deleted = await client.delete(f"/api/v1/sessions/{session_id}")
+    detail = await client.get(f"/api/v1/sessions/{session_id}")
+    listed = await client.get("/api/v1/sessions", params={"user_id": "delete-user"})
+
+    assert deleted.status_code == 204
+    assert detail.status_code == 404
+    assert all(item["session_id"] != session_id for item in listed.json()["sessions"])
+
+
+@pytest.mark.asyncio
 async def test_replan_succeeds_after_richer_poi_coverage(client):
     session_id = "api-replan-applied-001"
     for query in (

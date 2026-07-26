@@ -32,6 +32,8 @@ one stop; otherwise use separate `delete` and `add` operations.
 判断规则：
 1. 出行讨论（地点、吃饭、逛、玩）→ plan 或 replan
 2. 已有路线 + 修订意图（换店/跳过/加站/不喜欢某POI/不去某类/改预算时间区域/更便宜/换风格）→ replan
+   - 仅仅因为当前会话已有路线，不能选择 replan。
+   - 用户重新给出完整的区域、预算、时长或活动需求，但没有明确“加/删/换/改/不要”等修订表达时，必须选择 plan。
 3. 非出行话题 → reject
 4. replan 时仔细分析操作类型：
    - "不去X"/"不想X"/"不喜欢X" → delete, target_category=X
