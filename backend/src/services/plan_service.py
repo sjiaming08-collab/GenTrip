@@ -447,7 +447,47 @@ class PlanService:
             by_slot[str(fact["slot"])] = fact
         return list(by_slot.values())[-24:]
 
+    @staticmethod
+    def _turn_lineage(session: SessionState) -> tuple[int, tuple[str, ...]]:
+        return session.turn_count, tuple(turn.turn_id for turn in session.recent_turns)
+
+    @classmethod
+    def _rebase_session_metadata(
+        cls,
+        planned: SessionState,
+        latest: SessionState,
+        *,
+        base_turn_count: int,
+        base_turn_ids: tuple[str, ...],
+    ) -> None:
+        """Rebase benign concurrent metadata writes without hiding a newer user turn."""
+        if cls._turn_lineage(latest) != (base_turn_count, base_turn_ids):
+            raise SessionVersionConflict(planned.session_id)
+
+        planned.version = latest.version
+        planned.user_id = latest.user_id or planned.user_id
+        if latest.title:
+            planned.title = latest.title
+        planned.confirmed_stop_ids = list(dict.fromkeys([
+            *latest.confirmed_stop_ids,
+            *planned.confirmed_stop_ids,
+        ]))
+        planned.rejected_poi_ids = list(dict.fromkeys([
+            *latest.rejected_poi_ids,
+            *planned.rejected_poi_ids,
+        ]))
+        planned.overridden_slots = list(dict.fromkeys([
+            *latest.overridden_slots,
+            *planned.overridden_slots,
+        ]))
+        planned.route_feedback = [
+            *latest.route_feedback,
+            *(item for item in planned.route_feedback if item not in latest.route_feedback),
+        ][-50:]
+        planned.memory_facts = cls._merge_memory_facts(latest.memory_facts, planned.memory_facts)
+
     async def _save_session(self, session: SessionState, state: dict) -> None:
+        base_turn_count, base_turn_ids = self._turn_lineage(session)
         route_results = state.get("route_results") or []
         if route_results and isinstance(route_results[0], dict):
             session.current_route = route_results[0].get("route") or route_results[0]
@@ -528,7 +568,26 @@ class PlanService:
             if profile:
                 await self._mine_profile(profile, session)
                 await self._store.save_profile(session.tenant_id, profile)
-        await self.save_session(session)
+        # A background summary or feedback write may advance the optimistic
+        # session version while route planning is in flight. Retry only when
+        # the committed user-turn lineage is unchanged; a genuinely newer
+        # turn must still supersede this result.
+        for attempt in range(2):
+            try:
+                await self.save_session(session)
+                break
+            except SessionVersionConflict:
+                if attempt:
+                    raise
+                latest = await self._store.load_session(session.tenant_id, session.session_id)
+                if latest is None:
+                    raise
+                self._rebase_session_metadata(
+                    session,
+                    latest,
+                    base_turn_count=base_turn_count,
+                    base_turn_ids=base_turn_ids,
+                )
 
     async def _enqueue_session_summary(self, session: SessionState, run_id: str) -> None:
         if (
