@@ -17,8 +17,8 @@
 
 | 资产 | 当前内容 | 价值 |
 | --- | --- | --- |
-| 约束 golden | `golden_constraint_cases.json`，22 个语言变体 | 验证规则提取、默认值和记忆继承 |
-| 多轮 golden | `golden_conversations.json`，8 个会话/16 轮 | 验证 Plan/Replan、diff 与路线质量 |
+| 约束 golden | `golden_constraint_cases.json`，80 个语言变体 | 验证边界时间、模糊预算、多重排除、生僻偏好、默认值和记忆继承 |
+| 多轮 golden | `golden_conversations.json`，40 个会话/176 轮 | 验证 Plan/Replan、删除、替换、追加、偏好反转、diff 与路线质量 |
 | 质量函数 | `route_quality` | 预算、时间、排队、重复 POI、偏好覆盖、路线节奏 |
 | 运行时 E2E | `test_runtime_e2e_quality.py` | 入队、worker、事件、checkpoint、终态 |
 | 故障测试 | timeout、重试/DLQ、CAS、容量 | 验证部分可靠性边界 |
@@ -160,7 +160,7 @@
 - 将 golden fixture 加入 schema 校验和版本字段；生成机器可读 `eval-summary.json`。
 - 先补 30 个高风险 case：显式排除、时间、排队、删除加站组合、记忆覆盖、非旅行拒绝。
 
-验收：PR 可见分层结果；现有 212 测试、golden 与 E2E 全部稳定重复三次。
+验收：PR 可见分层结果；当前确定性套件、Golden 与 E2E 全部通过，发布前连续稳定重复三次。
 
 ### Phase B，2 周：真实持久化与故障测试
 

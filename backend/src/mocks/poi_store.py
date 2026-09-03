@@ -2,13 +2,12 @@
 
 import json
 from functools import lru_cache
-from pathlib import Path
 
 from ..models.route import ScoredPoi
+from ..resources import fixture_path
 from ..services.poi_retrieval import RetrievalResultLegacy, retrieve_pois as _retrieve
 
-FIXTURES_DIR = Path(__file__).resolve().parents[2] / "fixtures"
-POIS_PATH = FIXTURES_DIR / "pois.json"
+POIS_PATH = fixture_path("pois.json")
 DISTRICTS = ["徐汇区", "静安区", "浦东新区", "黄浦区"]
 
 

@@ -39,6 +39,7 @@ async def test_durable_runtime_preserves_golden_quality_and_operation_trace(monk
         started = await service.start_plan(turn["query"], session_id=session_id, idempotency_key=f"{case['id']}-{turn_index}")
         message = queue.items.pop(0)
         assert message.initial["run_id"] == started["run_id"]
+        message.initial["input_ts"] = "2026-08-18T03:00:00+00:00"
 
         assert await process_message(service, queue, message) is None
         run = await service.get_run(started["run_id"])

@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+
+import httpx
 
 from ..models.constraints import Assumption
 from ..models.retrieval import (
@@ -19,6 +24,7 @@ from ..models.retrieval import (
     RetrievalResult,
 )
 from ..models.route import ScoredPoi
+from ..resources import fixture_path
 from .category_taxonomy import (
     all_retrieval_leaves,
     load_taxonomy,
@@ -27,15 +33,18 @@ from .category_taxonomy import (
     widen_categories_to_parent_groups,
 )
 from .postgis_poi_repository import load_postgis_pois
+from .amap_poi_provider import AmapPoiProviderError, load_amap_pois
 from ..config import settings
+
+logger = logging.getLogger(__name__)
 
 MIN_CANDIDATES = 3
 PER_DOMAIN_LIMIT = 8
 MERGED_LIMIT = 20
 
 DISTRICTS = ["徐汇区", "静安区", "浦东新区", "黄浦区"]
-FIXTURES_DIR = Path(__file__).resolve().parents[2] / "fixtures"
-POIS_PATH = FIXTURES_DIR / "pois.json"
+POIS_PATH = fixture_path("pois.json")
+_POIS_PATH_OVERRIDE: ContextVar[Path | None] = ContextVar("poi_fixture_override", default=None)
 
 
 @dataclass
@@ -167,12 +176,20 @@ def _category_from_text(raw: str) -> str:
 
 
 def poi_categories(poi: dict) -> set[str]:
-    raw_categories: list[str] = []
+    specific_categories: list[str] = []
     categories = poi.get("categories") or []
     if isinstance(categories, list):
-        raw_categories.extend(str(item) for item in categories if item)
+        specific_categories.extend(str(item) for item in categories if item)
     if poi.get("sub_category"):
-        raw_categories.append(str(poi["sub_category"]))
+        specific_categories.append(str(poi["sub_category"]))
+    mapped_specific = {_category_from_text(raw) for raw in specific_categories}
+    specific_leaves = {
+        category for category in mapped_specific if category in all_retrieval_leaves()
+    }
+    if specific_leaves:
+        return specific_leaves
+
+    raw_categories: list[str] = []
     if poi.get("category"):
         raw_categories.append(str(poi["category"]))
     raw_categories.extend(str(item) for item in poi.get("tags") or [] if item)
@@ -238,10 +255,28 @@ def _poi_source_prefix(poi: dict) -> str:
     return "dp" if not source or source == "fixture" else source
 
 
+def _active_pois_path() -> Path:
+    return _POIS_PATH_OVERRIDE.get() or POIS_PATH
+
+
+@contextmanager
+def use_poi_fixture(path: Path):
+    """Use an isolated fixture in the current async context."""
+    resolved = path.resolve()
+    if not resolved.exists():
+        raise FileNotFoundError(resolved)
+    token = _POIS_PATH_OVERRIDE.set(resolved)
+    try:
+        yield
+    finally:
+        _POIS_PATH_OVERRIDE.reset(token)
+
+
 @lru_cache
-def _load_pois() -> tuple[float, list[dict]]:
-    mtime = os.path.getmtime(POIS_PATH)
-    with POIS_PATH.open(encoding="utf-8") as f:
+def _load_pois(path_value: str | None = None) -> tuple[float, list[dict]]:
+    path = Path(path_value) if path_value else _active_pois_path()
+    mtime = os.path.getmtime(path)
+    with path.open(encoding="utf-8") as f:
         data = json.load(f)
     if isinstance(data, dict):
         return mtime, data.get("pois") or []
@@ -249,7 +284,7 @@ def _load_pois() -> tuple[float, list[dict]]:
 
 
 def _online_pois() -> list[dict]:
-    _, pois = _load_pois()
+    _, pois = _load_pois(str(_active_pois_path()))
     return [
         p for p in pois
         if p.get("openstatus", 1) == 1 and p.get("status", "online") != "closed"
@@ -257,7 +292,7 @@ def _online_pois() -> list[dict]:
 
 
 @lru_cache
-def _build_category_index(pois_json_mtime: float) -> dict[str, list[dict]]:
+def _build_category_index(path_value: str, pois_json_mtime: float) -> dict[str, list[dict]]:
     index: dict[str, list[dict]] = {}
     for poi in _online_pois():
         for leaf in poi_categories(poi):
@@ -266,8 +301,9 @@ def _build_category_index(pois_json_mtime: float) -> dict[str, list[dict]]:
 
 
 def get_category_index() -> dict[str, list[dict]]:
-    mtime, _ = _load_pois()
-    return _build_category_index(mtime)
+    path_value = str(_active_pois_path())
+    mtime, _ = _load_pois(path_value)
+    return _build_category_index(path_value, mtime)
 
 
 def invalidate_index_cache() -> None:
@@ -302,15 +338,16 @@ def _matches_business_area(poi: dict, business_area: str) -> bool:
 
 
 def _matches_geo(poi: dict, geo: _GeoRelaxStep) -> bool:
-    if geo.business_area:
-        return _matches_business_area(poi, geo.business_area)
+    if geo.business_area and not _matches_business_area(poi, geo.business_area):
+        return False
     if geo.center_lat is not None and geo.center_lng is not None and geo.radius_m:
         lat, lng = _poi_lat_lng(poi)
         if lat == 0 or lng == 0:
             return False
-        return _distance_m(geo.center_lat, geo.center_lng, lat, lng) <= geo.radius_m
-    if geo.district:
-        return _poi_district(poi) == geo.district
+        if _distance_m(geo.center_lat, geo.center_lng, lat, lng) > geo.radius_m:
+            return False
+    if geo.district and _poi_district(poi) != geo.district:
+        return False
     return True
 
 
@@ -412,9 +449,13 @@ def _sort_pois(
                 quality_rank(p),
                 _distance_m(geo.center_lat or 0, geo.center_lng or 0, *_poi_lat_lng(p)),
                 -_poi_rating(p),
+                _poi_id(p),
             ),
         )
-    return sorted(pois, key=lambda p: (match_rank(p), quality_rank(p), -_poi_rating(p)))
+    return sorted(
+        pois,
+        key=lambda p: (match_rank(p), quality_rank(p), -_poi_rating(p), _poi_id(p)),
+    )
 
 
 def _prefer_curated_data(pois: list[dict], geo: _GeoRelaxStep) -> list[dict]:
@@ -448,6 +489,7 @@ def _build_geo_relax_plan(plan: RetrievalPlan) -> list[_GeoRelaxStep]:
         steps.append(
             _GeoRelaxStep(
                 name,
+                district=filters.district,
                 center_lat=filters.center_lat,
                 center_lng=filters.center_lng,
                 radius_m=filters.radius_m,
@@ -660,7 +702,15 @@ def _retrieve_one_domain(
         if used_geo.assumption:
             assumptions.append(used_geo.assumption)
 
-    merged_pool = _sort_pois(list(by_id.values()), geo=initial_geo, match_reasons=reasons)
+    merged_candidates = list(by_id.values())
+    district = str(plan.filters.district or "")
+    scope_type = str((plan.filters.geo_scope or {}).get("scope_type") or "")
+    district_is_explicit = bool(district and scope_type in {"", "district"})
+    if district_is_explicit:
+        merged_candidates = [
+            poi for poi in merged_candidates if _poi_district(poi) == district
+        ]
+    merged_pool = _sort_pois(merged_candidates, geo=initial_geo, match_reasons=reasons)
     scored = [
         to_scored_poi(poi, idx, dimension=spec.domain, match_reasons=reasons.get(_poi_id(poi), []))
         for idx, poi in enumerate(merged_pool[:limit])
@@ -750,8 +800,28 @@ def retrieve_by_plan(
 
 
 async def retrieve_by_plan_async(plan: RetrievalPlan, *, limit: int = MERGED_LIMIT) -> tuple[RetrievalResult, str, bool, bool]:
-    """Prefer PostGIS; retain the fixture path when local spatial data is unavailable."""
-    poi_pool, cache_hit = await load_postgis_pois(settings.database_url)
+    """Retrieve from the configured source with deterministic local fallback."""
+    if _POIS_PATH_OVERRIDE.get() is not None:
+        return retrieve_by_plan(plan, limit=limit), "fixture:override", False, False
+
+    if settings.poi_provider == "mock":
+        return retrieve_by_plan(plan, limit=limit), "fixture", False, False
+
+    if settings.poi_provider == "amap":
+        try:
+            poi_pool, cache_hit = await load_amap_pois(plan)
+            if poi_pool:
+                return retrieve_by_plan(plan, limit=limit, poi_pool=poi_pool), "amap", False, cache_hit
+            logger.warning("amap_poi_fallback reason=empty_result")
+        except (AmapPoiProviderError, httpx.HTTPError, ValueError) as exc:
+            logger.warning("amap_poi_fallback reason=%s", type(exc).__name__)
+
+        poi_pool, cache_hit = await load_postgis_pois(settings.database_url, plan)
+        if poi_pool:
+            return retrieve_by_plan(plan, limit=limit, poi_pool=poi_pool), "postgis", True, cache_hit
+        return retrieve_by_plan(plan, limit=limit), "fixture", True, False
+
+    poi_pool, cache_hit = await load_postgis_pois(settings.database_url, plan)
     if poi_pool is None:
         return retrieve_by_plan(plan, limit=limit), "fixture", True, False
     return retrieve_by_plan(plan, limit=limit, poi_pool=poi_pool), "postgis", False, cache_hit
@@ -769,7 +839,7 @@ def _merge_scored_pois(pois: list[ScoredPoi], *, limit: int) -> list[ScoredPoi]:
     merged: list[ScoredPoi] = []
     for poi in sorted(
         pois,
-        key=lambda item: (tier_rank(item), -item.composite_score, -item.rating),
+        key=lambda item: (tier_rank(item), -item.composite_score, -item.rating, item.poi_id),
     ):
         if poi.poi_id in seen:
             continue

@@ -13,11 +13,13 @@ class DomainSpec(BaseModel):
     domain: IntentDomain
     categories: Optional[list[str]] = None
     poi_names: list[str] = Field(default_factory=list)
+    search_keywords: list[str] = Field(default_factory=list)
 
 
 class RetrievalFilters(BaseModel):
     """跨域共享的过滤条件。"""
 
+    city: Optional[str] = None
     district: Optional[str] = None
     business_area: Optional[str] = None
     center_lat: Optional[float] = None
@@ -34,6 +36,7 @@ class RetrievalPlan(BaseModel):
     raw_query: str
     filters: RetrievalFilters = Field(default_factory=RetrievalFilters)
     domains: list[DomainSpec] = Field(default_factory=list)
+    provider_query_limit: int | None = Field(default=None, ge=1, le=16)
 
 
 class DomainRetrievalMeta(BaseModel):

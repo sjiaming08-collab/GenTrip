@@ -1,0 +1,33 @@
+{
+  "version": "golden-v2-20260816",
+  "constraint_suite": "golden_constraint_cases.json",
+  "conversation_suite": "golden_conversations.json",
+  "route_suite": "route_eval_cases.json",
+  "travelplanner_suite": "travelplanner_gentrip_validation.json",
+  "travelplanner_protocol": "gentrip-derived-v1",
+  "travelplanner_official_score": false,
+  "local_life_suite": "local_life_benchmark.json",
+  "local_life_protocol": "gentrip-local-life-e2e-v1",
+  "local_life_agents": 10,
+  "local_life_single_cases": 120,
+  "local_life_conversation_turns": 30,
+  "local_life_quality_gate": {
+    "minimum_constraint_pass_rate": 0.98,
+    "minimum_single_end_to_end_pass_rate": 0.9,
+    "minimum_mean_quality_score": 0.9,
+    "minimum_conversation_turn_pass_rate": 0.95
+  },
+  "poi_fixture": "pois.json",
+  "hard_constraint_policy": "zero_tolerance",
+  "quality_gate": {
+    "minimum_case_pass_rate": 1.0,
+    "minimum_mean_quality_score": 0.78,
+    "zero_hard_constraint_violations": true
+  },
+  "llm_judge": {
+    "mode": "offline",
+    "minimum_normalized_score": 0.75,
+    "hard_constraint_policy": "zero_tolerance"
+  },
+  "notes": "80+ constraint prompts, 40 multi-turn conversations with 150+ turns, and 30 full-loop route/resilience cases. Deterministic PR baseline; live LLM and subjective judge runs are offline tiers."
+}

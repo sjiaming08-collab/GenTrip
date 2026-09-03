@@ -16,9 +16,20 @@ async def test_plan_api_includes_local_telemetry_when_llm_disabled(client):
     meta = response.json()["meta"]
     assert meta["debug_trace_id"] != response.json()["run_id"]
     assert len(meta["debug_trace_id"]) == 32
-    assert [item["phase"] for item in meta["phase_log"]][:4] == [
+    assert meta["turn_plan"]["mode"] == "plan"
+    assert meta["turn_plan"]["session_version"] == 0
+    assert meta["turn_plan"]["context_digest"] == meta["turn_context_meta"]["context_digest"]
+    assert meta["turn_context_meta"]["context_version"] == 1
+    assert meta["compiled_constraints"]["contract_version"] == 3
+    assert meta["compiled_constraints"]["schedule_envelope"]["time_scope"] == "unspecified"
+    assert isinstance(meta["active_policies"], list)
+    assert isinstance(meta["blueprint_feasibility"], list)
+    assert isinstance(meta["planning_failures"], list)
+    assert isinstance(meta["repair_actions"], list)
+    assert [item["phase"] for item in meta["phase_log"]][:5] == [
         "turn_orchestrate",
         "constraint_extract",
+        "constraint_compile",
         "planning_decision",
         "route_bundle_search",
     ]
@@ -49,6 +60,7 @@ class UsageClient:
     async def chat_json_with_meta(self, system, user, *, operation="unknown", temperature=0.1):
         usage_by_operation = {
             "turn_classify": (40, 10),
+            "constraint_extract": (60, 15),
             "route_evaluate": (100, 20),
             "route_present": (50, 10),
             "session_summary": (30, 5),
@@ -66,6 +78,18 @@ class UsageClient:
         }
         if operation == "turn_classify":
             return {"turn_mode": "plan", "primary_intent": "路线规划", "query_understanding": "test", "reason": "test", "replan_operation": None}, meta
+        if operation == "constraint_extract":
+            return {
+                "turn_mode": "plan",
+                "primary_intent": "route planning",
+                "query_understanding": "three hour Huangpu plan",
+                "domains": ["sightseeing"],
+                "district": "黄浦区",
+                "time_budget_minutes": 180,
+                "budget_per_person": 100,
+                "poi_count": 3,
+                "assumptions": [],
+            }, meta
         if operation == "route_evaluate":
             return {
                 "scores": [
@@ -86,10 +110,42 @@ class UsageClient:
 
 
 @pytest.mark.asyncio
+async def test_default_plan_fuses_turn_classification_into_constraint_call(client, monkeypatch):
+    monkeypatch.setattr(settings, "llm_enabled", True)
+    monkeypatch.setattr(settings, "llm_api_key", "test-key")
+    monkeypatch.setattr(settings, "constraint_extract_mode", "llm_with_fallback")
+    monkeypatch.setattr(settings, "route_evaluate_mode", "rule_only")
+    monkeypatch.setattr(settings, "session_summary_mode", "rule_only")
+    fake = UsageClient()
+
+    async def unexpected_classifier(*_args, **_kwargs):
+        raise AssertionError("cold travel plan must not call turn classifier")
+
+    monkeypatch.setattr("src.graph.nodes.turn_orchestrate.classify_turn", unexpected_classifier)
+    monkeypatch.setattr("src.llm.constraint_extract_llm.get_llm_client", lambda: fake)
+    monkeypatch.setattr("src.llm.route_present.get_llm_client", lambda: fake)
+
+    response = await client.post(
+        "/api/v1/routes/plan",
+        json={"query": "黄浦区玩三个小时，人均100元"},
+    )
+
+    assert response.status_code == 200
+    meta = response.json()["meta"]
+    by_operation = {call["operation"]: call for call in meta["llm_calls"]}
+    assert by_operation["turn_orchestrate"]["skip_reason"] == "fused_with_constraint_extract"
+    assert by_operation["route_evaluate"]["skip_reason"] == "rule_only_mode"
+    assert by_operation["session_summary"]["skip_reason"] == "deterministic_summary"
+    assert meta["token_usage"]["call_count"] == 2
+
+
+@pytest.mark.asyncio
 async def test_plan_api_sums_mock_llm_usage(client, monkeypatch):
     monkeypatch.setattr(settings, "llm_enabled", True)
     monkeypatch.setattr(settings, "llm_api_key", "test-key")
     monkeypatch.setattr(settings, "constraint_extract_mode", "rule_only")
+    monkeypatch.setattr(settings, "route_evaluate_mode", "llm_with_fallback")
+    monkeypatch.setattr(settings, "session_summary_mode", "llm_sync")
     fake = UsageClient()
     monkeypatch.setattr("src.llm.route_evaluate.get_llm_client", lambda: fake)
     monkeypatch.setattr("src.llm.route_present.get_llm_client", lambda: fake)
@@ -122,6 +178,8 @@ async def test_llm_failure_is_recorded_and_route_falls_back(client, monkeypatch)
     monkeypatch.setattr(settings, "llm_enabled", True)
     monkeypatch.setattr(settings, "llm_api_key", "test-key")
     monkeypatch.setattr(settings, "constraint_extract_mode", "rule_only")
+    monkeypatch.setattr(settings, "route_evaluate_mode", "llm_with_fallback")
+    monkeypatch.setattr(settings, "session_summary_mode", "llm_sync")
     fake = FailingClient()
     monkeypatch.setattr("src.llm.route_evaluate.get_llm_client", lambda: fake)
     monkeypatch.setattr("src.llm.route_present.get_llm_client", lambda: fake)

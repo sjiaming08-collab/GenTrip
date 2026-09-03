@@ -1,7 +1,12 @@
 """[Replan 3] partial_retrieval — 仅检索 unlocked_slots 需要的 POI。"""
 
 from ...services.poi_retrieval import retrieve_by_plan_async
-from ...services.category_taxonomy import DEFAULT_MEAL_CATEGORIES, GENERIC_DINING_TERMS
+from ...models.constraints import IntentDomain
+from ...services.category_taxonomy import (
+    DEFAULT_MEAL_CATEGORIES,
+    GENERIC_DINING_TERMS,
+    domain_for_category,
+)
 from ...services.poi_query_parser import parse_retrieval_plan
 from ...models.retrieval import DomainSpec, RetrievalPlan, RetrievalFilters
 from ..state import GraphState, phase_update
@@ -44,14 +49,18 @@ async def partial_retrieval(state: GraphState) -> dict:
         rejected.add(str(pid))
 
     for slot in unlocked[:4]:  # bound compound replan retrieval fan-out
-        cuisine = slot.get("new_cuisine")
-        if not cuisine:
+        target_category = slot.get("new_cuisine") or slot.get("new_category")
+        if not target_category:
             continue
 
-        # Build a minimal RetrievalPlan for just this cuisine
+        domain = domain_for_category(target_category) or IntentDomain.DINING
         domain_spec = DomainSpec(
-            domain="dining",
-            categories=list(DEFAULT_MEAL_CATEGORIES) if cuisine in GENERIC_DINING_TERMS else [cuisine],
+            domain=domain,
+            categories=(
+                list(DEFAULT_MEAL_CATEGORIES)
+                if domain == IntentDomain.DINING and target_category in GENERIC_DINING_TERMS
+                else [target_category]
+            ),
         )
         anchor_lat, anchor_lng = _anchor_for_slot(current_stops, slot)
         filters = RetrievalFilters(
@@ -70,10 +79,14 @@ async def partial_retrieval(state: GraphState) -> dict:
         )
 
         result, _source, _degraded, _cache_hit = await retrieve_by_plan_async(plan)
-        for poi in result.pois[:3]:  # top 3 per slot
+        for poi in result.pois[:6]:  # bounded alternatives for hours and distance validation
             poi_dict = poi.model_dump(mode="json") if hasattr(poi, "model_dump") else poi
             if isinstance(poi_dict, dict) and str(poi_dict.get("poi_id", "")) not in rejected:
                 poi_dict["_replan_operation_index"] = slot.get("operation_index", 0)
+                poi_dict["slot_id"] = slot.get("slot_id")
+                poi_dict["slot_role"] = slot.get("slot_role")
+                poi_dict["slot_source"] = slot.get("slot_source")
+                poi_dict["slot_time_window"] = slot.get("slot_time_window")
                 candidates.append(poi_dict)
 
     return phase_update(

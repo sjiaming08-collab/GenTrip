@@ -26,6 +26,8 @@ class GraphState(TypedDict, total=False):
     turn_id: str
     run_mode: str
     turn_mode: str
+    turn_relation: str
+    recompute_scope: str
     run_status: str
     plan_path: Optional[str]
     planning_outcome: str
@@ -44,9 +46,16 @@ class GraphState(TypedDict, total=False):
 
     # L2 REASONING
     constraints: Optional[dict]
+    compiled_constraints: Optional[dict]
+    active_policies: list
+    dropped_policies: list
+    constraint_provenance: Optional[dict]
     original_constraints: Optional[dict]
     geo_scope: Optional[dict]
     route_intent: Optional[dict]
+    turn_plan: Optional[dict]
+    constraint_patch: Optional[dict]
+    turn_context_meta: Optional[dict]
     memory_context: Optional[dict]
     assumptions: Annotated[list[dict], merge_assumptions]
     constraint_embedding: Optional[list[float]]
@@ -57,7 +66,14 @@ class GraphState(TypedDict, total=False):
     bundle_candidates: list
     bundle_match_score: float
     matched_bundle_id: Optional[str]
+    activity_blueprints: list
+    blueprint_feasibility: list
+    planning_failures: list
+    repair_actions: list
+    repair_applied: bool
+    selected_blueprint_id: Optional[str]
     candidate_pois: list
+    candidate_pois_by_slot: dict
     candidate_pois_by_dim: dict
     retrieval_meta: Optional[dict]
     route_generation_meta: Optional[dict]
@@ -95,6 +111,9 @@ class GraphState(TypedDict, total=False):
     stream_events: Annotated[list[dict], operator.add]
     runtime_run_id: Optional[str]
     trace_id: Optional[str]
+    resume_next_node: Optional[str]
+    resumed_from_phase: Optional[str]
+    resume_count: int
 
 
 def utc_now_iso() -> str:
@@ -118,6 +137,8 @@ def build_initial_state(
         turn_id=str(uuid4()),
         run_mode="plan",
         turn_mode="plan",
+        turn_relation="new_goal",
+        recompute_scope="global_rebuild",
         run_status="running",
         plan_path=None,
         planning_outcome="pending",
@@ -132,9 +153,16 @@ def build_initial_state(
         user_lng=user_lng,
         input_ts=utc_now_iso(),
         constraints=None,
+        compiled_constraints=None,
+        active_policies=[],
+        dropped_policies=[],
+        constraint_provenance=None,
         original_constraints=None,
         geo_scope=None,
         route_intent=None,
+        turn_plan=None,
+        constraint_patch=None,
+        turn_context_meta=None,
         memory_context=None,
         assumptions=[],
         constraint_embedding=None,
@@ -143,7 +171,14 @@ def build_initial_state(
         bundle_candidates=[],
         bundle_match_score=0.0,
         matched_bundle_id=None,
+        activity_blueprints=[],
+        blueprint_feasibility=[],
+        planning_failures=[],
+        repair_actions=[],
+        repair_applied=False,
+        selected_blueprint_id=None,
         candidate_pois=[],
+        candidate_pois_by_slot={},
         candidate_pois_by_dim={},
         retrieval_meta=None,
         route_generation_meta=None,
@@ -175,6 +210,9 @@ def build_initial_state(
         stream_events=[],
         runtime_run_id=None,
         trace_id=None,
+        resume_next_node=None,
+        resumed_from_phase=None,
+        resume_count=0,
     )
 
 
@@ -204,6 +242,12 @@ def normalize_llm_call(
     total_tokens: int = 0,
     fallback_used: bool = False,
     source: str | None = None,
+    attempt_count: int = 1,
+    error_code: str | None = None,
+    circuit_state: str | None = None,
+    max_tokens: int | None = None,
+    thinking_enabled: bool | None = None,
+    skip_reason: str | None = None,
 ) -> dict:
     return {
         "operation": operation,
@@ -216,6 +260,12 @@ def normalize_llm_call(
         "latency_ms": latency_ms,
         "fallback_used": fallback_used,
         "source": source or operation,
+        "attempt_count": int(attempt_count or 0),
+        "error_code": error_code,
+        "circuit_state": circuit_state,
+        "max_tokens": max_tokens,
+        "thinking_enabled": thinking_enabled,
+        "skip_reason": skip_reason,
     }
 
 
@@ -239,6 +289,12 @@ def llm_call_from_meta(
         total_tokens=meta.get("total_tokens") or 0,
         fallback_used=fallback_used,
         source=source,
+        attempt_count=meta.get("attempt_count") if meta.get("attempt_count") is not None else 1,
+        error_code=meta.get("error_code"),
+        circuit_state=meta.get("circuit_state"),
+        max_tokens=meta.get("max_tokens"),
+        thinking_enabled=meta.get("thinking_enabled"),
+        skip_reason=meta.get("skip_reason"),
     )
 
 

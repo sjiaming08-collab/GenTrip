@@ -1,10 +1,10 @@
 """路线相关模型。"""
 
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class RouteSource(str, Enum):
@@ -31,6 +31,32 @@ class ScoredPoi(BaseModel):
     ugc_summary: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
     match_reasons: list[str] = Field(default_factory=list)
+    slot_id: Optional[str] = None
+    blueprint_id: Optional[str] = None
+    slot_role: Optional[str] = None
+    slot_source: Optional[str] = None
+    slot_required: bool = True
+    slot_duration_minutes: Optional[int] = None
+    slot_time_window: Optional[dict] = None
+    slot_expected_time_window: Optional[dict] = None
+    recall_keywords: list[str] = Field(default_factory=list)
+    provider: Optional[str] = None
+    field_sources: dict[str, str] = Field(default_factory=dict)
+    match_explanation: Optional[str] = None
+
+
+class RouteLeg(BaseModel):
+    from_poi_id: str
+    to_poi_id: str
+    mode: Literal["walking", "cycling", "transit", "driving"]
+    distance_m: int = Field(ge=0)
+    duration_min: int = Field(ge=0)
+    cost_per_person: int = Field(default=0, ge=0)
+    source: str
+    estimated: bool = True
+    confidence: Literal["low", "medium", "high"] = "medium"
+    fallback_used: bool = False
+    selection_reason: str
 
 
 class RouteStop(BaseModel):
@@ -51,6 +77,10 @@ class RouteStop(BaseModel):
     opening_hours_text: Optional[str] = None
     lat: Optional[float] = None
     lng: Optional[float] = None
+    slot_id: Optional[str] = None
+    slot_role: Optional[str] = None
+    slot_source: Optional[str] = None
+    slot_time_window: Optional[dict] = None
 
 
 class RoutePlan(BaseModel):
@@ -60,6 +90,32 @@ class RoutePlan(BaseModel):
     stops: list[RouteStop]
     total_duration_min: int
     estimated_cost_per_person: int
+    legs: list[RouteLeg] = Field(default_factory=list)
+    blueprint_id: Optional[str] = None
+    style: Optional[str] = None
+
+    @model_validator(mode="after")
+    def hydrate_legacy_legs(self) -> "RoutePlan":
+        """Keep old cached routes API-compatible while new routes emit full legs."""
+
+        if self.legs or len(self.stops) < 2:
+            return self
+        self.legs = [
+            RouteLeg(
+                from_poi_id=previous.poi_id,
+                to_poi_id=current.poi_id,
+                mode="walking",
+                distance_m=0,
+                duration_min=current.travel_time_from_prev_min,
+                source=current.travel_source,
+                estimated=current.travel_estimated,
+                confidence=current.travel_confidence if current.travel_confidence in {"low", "medium", "high"} else "medium",
+                fallback_used=current.travel_estimated,
+                selection_reason="由旧版站点交通字段兼容回填",
+            )
+            for previous, current in zip(self.stops, self.stops[1:])
+        ]
+        return self
 
 
 class ValidationReport(BaseModel):

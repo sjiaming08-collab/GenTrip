@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, ValidationError
 from ..config import settings
 from ..models.route import RoutePlan
 from .client import get_llm_client
-from .exceptions import LLMError
+from .exceptions import LLMError, failure_meta
 from .prompts.route_evaluate import SYSTEM_PROMPT
 
 
@@ -61,7 +61,7 @@ async def llm_score_routes_with_meta(
     payload = {
         "user_query": user_query,
         "constraints": constraints,
-        "memory_context": memory_context or {},
+        "dialog_summary": (memory_context or {}).get("dialog_summary", ""),
         "routes": [_route_payload(route) for route in routes],
     }
     try:
@@ -76,8 +76,8 @@ async def llm_score_routes_with_meta(
             raw = await client.chat_json(SYSTEM_PROMPT, json.dumps(payload, ensure_ascii=False))
             meta = {"operation": "route_evaluate", "status": "success"}
         result = LlmRouteScoreResult.model_validate(raw)
-    except (LLMError, ValidationError):
-        return {}, {"operation": "route_evaluate", "status": "failed", "fallback_used": True}
+    except (LLMError, ValidationError) as exc:
+        return {}, failure_meta("route_evaluate", exc)
 
     by_id: dict[str, LlmRouteScore] = {}
     for score in result.scores:

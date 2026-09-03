@@ -1,0 +1,1345 @@
+[
+  {
+    "id": "tp-validation-017",
+    "query": "请在黄浦区安排一条上海日内路线，1人出行，游玩3小时，人均预算不超过260元，包含观光和吃饭，尽量安排2个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 17,
+      "level": "easy",
+      "days": 3,
+      "origin": "Denver",
+      "destination": "Palm Springs",
+      "people_number": 1,
+      "budget": 2200,
+      "local_constraint": {
+        "house rule": null,
+        "cuisine": null,
+        "room type": null,
+        "transportation": null
+      },
+      "query": "Could you design a 3-day travel itinerary from Denver to Palm Springs for 1 person? The travel should span from March 27th to March 29th, 2022. The travel budget is set at $2,200. No specific local constraints are given."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation"
+      ],
+      "portable_constraint_coverage": 0.75,
+      "mapping": {
+        "district": "黄浦区",
+        "time_budget_minutes": 180,
+        "budget_per_person": 260,
+        "preferred_cuisines": [],
+        "poi_count": 2
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 2,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "黄浦区",
+        "time_budget_minutes": 180,
+        "budget_per_person": 260,
+        "preferred_cuisines": [],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 2
+      }
+    }
+  },
+  {
+    "id": "tp-validation-001",
+    "query": "请在徐汇区安排一条上海日内路线，1人出行，游玩3小时，人均预算不超过190元，包含观光和吃饭，尽量安排2个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 1,
+      "level": "easy",
+      "days": 3,
+      "origin": "Oakland",
+      "destination": "Tucson",
+      "people_number": 1,
+      "budget": 1400,
+      "local_constraint": {
+        "house rule": null,
+        "cuisine": null,
+        "room type": null,
+        "transportation": null
+      },
+      "query": "Please draw up a 3-day travel itinerary for one person, beginning in Oakland and heading to Tucson from March 15th to March 17th, 2022, with a budget of $1,400."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation"
+      ],
+      "portable_constraint_coverage": 0.75,
+      "mapping": {
+        "district": "徐汇区",
+        "time_budget_minutes": 180,
+        "budget_per_person": 190,
+        "preferred_cuisines": [],
+        "poi_count": 2
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 2,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "徐汇区",
+        "time_budget_minutes": 180,
+        "budget_per_person": 190,
+        "preferred_cuisines": [],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 2
+      }
+    }
+  },
+  {
+    "id": "tp-validation-026",
+    "query": "请在徐汇区安排一条上海日内路线，1人出行，游玩4小时，人均预算不超过260元，包含观光和吃饭，尽量安排3个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 26,
+      "level": "easy",
+      "days": 5,
+      "origin": "Billings",
+      "destination": "Minnesota",
+      "people_number": 1,
+      "budget": 4000,
+      "local_constraint": {
+        "house rule": null,
+        "cuisine": null,
+        "room type": null,
+        "transportation": null
+      },
+      "query": "Can you create a 5-day travel plan for me that begins in Billings and includes visits to 2 cities in Minnesota? The journey should take place from March 6th to March 10th, 2022, with a budget of $4,000."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation"
+      ],
+      "portable_constraint_coverage": 0.75,
+      "mapping": {
+        "district": "徐汇区",
+        "time_budget_minutes": 240,
+        "budget_per_person": 260,
+        "preferred_cuisines": [],
+        "poi_count": 3
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 3,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "徐汇区",
+        "time_budget_minutes": 240,
+        "budget_per_person": 260,
+        "preferred_cuisines": [],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 3
+      }
+    }
+  },
+  {
+    "id": "tp-validation-028",
+    "query": "请在浦东新区安排一条上海日内路线，1人出行，游玩4小时，人均预算不超过210元，包含观光和吃饭，尽量安排3个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 28,
+      "level": "easy",
+      "days": 5,
+      "origin": "Richmond",
+      "destination": "Tennessee",
+      "people_number": 1,
+      "budget": 2600,
+      "local_constraint": {
+        "house rule": null,
+        "cuisine": null,
+        "room type": null,
+        "transportation": null
+      },
+      "query": "Can you assist in crafting a travel schedule departing from Richmond and traveling to 2 cities in Tennessee? The journey will last 5 days, starting on March 5th and concluding on March 9th, 2022. The travel budget is set at $2,600."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation"
+      ],
+      "portable_constraint_coverage": 0.75,
+      "mapping": {
+        "district": "浦东新区",
+        "time_budget_minutes": 240,
+        "budget_per_person": 210,
+        "preferred_cuisines": [],
+        "poi_count": 3
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 3,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "浦东新区",
+        "time_budget_minutes": 240,
+        "budget_per_person": 210,
+        "preferred_cuisines": [],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 3
+      }
+    }
+  },
+  {
+    "id": "tp-validation-046",
+    "query": "请在黄浦区安排一条上海日内路线，1人出行，游玩5小时，人均预算不超过260元，包含观光和吃饭，尽量安排4个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 46,
+      "level": "easy",
+      "days": 7,
+      "origin": "Palm Springs",
+      "destination": "Texas",
+      "people_number": 1,
+      "budget": 8100,
+      "local_constraint": {
+        "house rule": null,
+        "cuisine": null,
+        "room type": null,
+        "transportation": null
+      },
+      "query": "Could you assist me in creating a travel plan from Palm Springs to Texas that spans 7 days, visiting 3 cities from March 13th to March 19th, 2022? I have set aside a budget of $8,100 for this trip."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation"
+      ],
+      "portable_constraint_coverage": 0.75,
+      "mapping": {
+        "district": "黄浦区",
+        "time_budget_minutes": 300,
+        "budget_per_person": 260,
+        "preferred_cuisines": [],
+        "poi_count": 4
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 4,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "黄浦区",
+        "time_budget_minutes": 300,
+        "budget_per_person": 260,
+        "preferred_cuisines": [],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 4
+      }
+    }
+  },
+  {
+    "id": "tp-validation-056",
+    "query": "请在静安区安排一条上海日内路线，1人出行，游玩5小时，人均预算不超过140元，包含观光和吃饭，尽量安排4个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 56,
+      "level": "easy",
+      "days": 7,
+      "origin": "Kona",
+      "destination": "California",
+      "people_number": 1,
+      "budget": 2500,
+      "local_constraint": {
+        "house rule": null,
+        "cuisine": null,
+        "room type": null,
+        "transportation": null
+      },
+      "query": "Could you assist in creating a 7-day travel itinerary, which begins in Kona and includes visits to 3 different cities in California? The travel dates are from March 10th to March 16th, 2022, with a total travel expense of approximately $2,500."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation"
+      ],
+      "portable_constraint_coverage": 0.75,
+      "mapping": {
+        "district": "静安区",
+        "time_budget_minutes": 300,
+        "budget_per_person": 140,
+        "preferred_cuisines": [],
+        "poi_count": 4
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 4,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "静安区",
+        "time_budget_minutes": 300,
+        "budget_per_person": 140,
+        "preferred_cuisines": [],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 4
+      }
+    }
+  },
+  {
+    "id": "tp-validation-127",
+    "query": "请在黄浦区安排一条上海日内路线，2人出行，游玩3小时，人均预算不超过100元，包含观光和吃饭，餐饮可选西餐或本帮菜，尽量安排2个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 127,
+      "level": "hard",
+      "days": 3,
+      "origin": "Houston",
+      "destination": "Pensacola",
+      "people_number": 2,
+      "budget": 1400,
+      "local_constraint": {
+        "house rule": "visitors",
+        "cuisine": [
+          "Indian",
+          "American",
+          "Chinese",
+          "Italian"
+        ],
+        "room type": null,
+        "transportation": "no self-driving"
+      },
+      "query": "Could you help design a travel plan for two people leaving from Houston to Pensacola for 3 days, from March 6th to March 8th, 2022? Our budget is set at $1,400 for this trip and we require our accommodations to be visitor-friendly. We would like to have options to dine at Indian, American, Chinese, and Italian restaurants. We also prefer not to self-drive during the trip."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals",
+        "cuisine"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation",
+        "accommodation_house_rule",
+        "intercity_transport_preference"
+      ],
+      "portable_constraint_coverage": 0.571,
+      "mapping": {
+        "district": "黄浦区",
+        "time_budget_minutes": 180,
+        "budget_per_person": 100,
+        "preferred_cuisines": [
+          "西餐",
+          "本帮菜"
+        ],
+        "poi_count": 2
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "西餐",
+          "本帮菜"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "黄浦区",
+        "time_budget_minutes": 180,
+        "budget_per_person": 100,
+        "preferred_cuisines": [
+          "西餐",
+          "本帮菜"
+        ],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 2
+      }
+    }
+  },
+  {
+    "id": "tp-validation-133",
+    "query": "请在黄浦区安排一条上海日内路线，2人出行，游玩3小时，人均预算不超过100元，包含观光和吃饭，尽量安排2个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 133,
+      "level": "hard",
+      "days": 3,
+      "origin": "Columbus",
+      "destination": "Newark",
+      "people_number": 2,
+      "budget": 1200,
+      "local_constraint": {
+        "house rule": "children under 10",
+        "cuisine": null,
+        "room type": "entire room",
+        "transportation": "no self-driving"
+      },
+      "query": "Can you assist in formulating a 3-day travel plan departing from Columbus and heading to Newark, covering 1 city, from March 25th to March 27th, 2022, for 2 people? We are traveling with children under 10, so our accommodations must be suitable for them. We'd prefer entire rooms and our revised budget is set at $1,200. We're also looking for options where we don't need to self-drive."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation",
+        "accommodation_house_rule",
+        "accommodation_room_type",
+        "intercity_transport_preference"
+      ],
+      "portable_constraint_coverage": 0.429,
+      "mapping": {
+        "district": "黄浦区",
+        "time_budget_minutes": 180,
+        "budget_per_person": 100,
+        "preferred_cuisines": [],
+        "poi_count": 2
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 2,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "黄浦区",
+        "time_budget_minutes": 180,
+        "budget_per_person": 100,
+        "preferred_cuisines": [],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 2
+      }
+    }
+  },
+  {
+    "id": "tp-validation-148",
+    "query": "请在浦东新区安排一条上海日内路线，3人出行，游玩4小时，人均预算不超过100元，包含观光和吃饭，餐饮可选西餐，尽量安排3个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 148,
+      "level": "hard",
+      "days": 5,
+      "origin": "Myrtle Beach",
+      "destination": "Massachusetts",
+      "people_number": 3,
+      "budget": 3800,
+      "local_constraint": {
+        "house rule": "smoking",
+        "cuisine": [
+          "Indian",
+          "Mexican",
+          "American",
+          "Mediterranean"
+        ],
+        "room type": "entire room",
+        "transportation": null
+      },
+      "query": "Can you provide a travel plan for our group of 3 from Myrtle Beach to Massachusetts, visiting 2 cities over five days, from March 12th to March 16th, 2022? We have a budget of $3,800. We would like to stay in entire rooms where smoking is allowed. Additionally, we are interested in Indian, Mexican, American, and Mediterranean cuisines."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals",
+        "cuisine"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation",
+        "accommodation_house_rule",
+        "accommodation_room_type"
+      ],
+      "portable_constraint_coverage": 0.571,
+      "mapping": {
+        "district": "浦东新区",
+        "time_budget_minutes": 240,
+        "budget_per_person": 100,
+        "preferred_cuisines": [
+          "西餐"
+        ],
+        "poi_count": 3
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "西餐"
+        ]
+      ],
+      "min_stops": 3,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "浦东新区",
+        "time_budget_minutes": 240,
+        "budget_per_person": 100,
+        "preferred_cuisines": [
+          "西餐"
+        ],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 3
+      }
+    }
+  },
+  {
+    "id": "tp-validation-146",
+    "query": "请在浦东新区安排一条上海日内路线，2人出行，游玩4小时，人均预算不超过100元，包含观光和吃饭，尽量安排3个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 146,
+      "level": "hard",
+      "days": 5,
+      "origin": "Grand Junction",
+      "destination": "Arizona",
+      "people_number": 2,
+      "budget": 2100,
+      "local_constraint": {
+        "house rule": "visitors",
+        "cuisine": null,
+        "room type": "private room",
+        "transportation": "no flight"
+      },
+      "query": "Could you help create a 5-day itinerary for a travel plan departing from Grand Junction and heading to 2 cities in Arizona from March 19th to March 23rd, 2022? It's a plan for two people with a budget of $2,100. Our accommodations should allow visitors and our preference is for private rooms. Additionally, we do not require any flight transportation."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation",
+        "accommodation_house_rule",
+        "accommodation_room_type",
+        "intercity_transport_preference"
+      ],
+      "portable_constraint_coverage": 0.429,
+      "mapping": {
+        "district": "浦东新区",
+        "time_budget_minutes": 240,
+        "budget_per_person": 100,
+        "preferred_cuisines": [],
+        "poi_count": 3
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 3,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "浦东新区",
+        "time_budget_minutes": 240,
+        "budget_per_person": 100,
+        "preferred_cuisines": [],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 3
+      }
+    }
+  },
+  {
+    "id": "tp-validation-176",
+    "query": "请在浦东新区安排一条上海日内路线，2人出行，游玩5小时，人均预算不超过210元，包含观光和吃饭，餐饮可选西餐或本帮菜，尽量安排4个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 176,
+      "level": "hard",
+      "days": 7,
+      "origin": "Salt Lake City",
+      "destination": "Montana",
+      "people_number": 2,
+      "budget": 7200,
+      "local_constraint": {
+        "house rule": "parties",
+        "cuisine": [
+          "American",
+          "Mediterranean",
+          "Indian",
+          "Chinese"
+        ],
+        "room type": null,
+        "transportation": "no self-driving"
+      },
+      "query": "Can you help devise a 7-day travel itinerary for 2 people, beginning in Salt Lake City and includes visiting 3 unique cities in Montana from March 16th to 22nd, 2022? We have a planned budget of $7,200. In terms of accommodations, we would like places where parties are permitted. Throughout our stay, we'd wish to enjoy various cuisines, including American, Mediterranean, Indian, and Chinese. Lastly, we prefer not to drive ourselves throughout this journey."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals",
+        "cuisine"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation",
+        "accommodation_house_rule",
+        "intercity_transport_preference"
+      ],
+      "portable_constraint_coverage": 0.571,
+      "mapping": {
+        "district": "浦东新区",
+        "time_budget_minutes": 300,
+        "budget_per_person": 210,
+        "preferred_cuisines": [
+          "西餐",
+          "本帮菜"
+        ],
+        "poi_count": 4
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "西餐",
+          "本帮菜"
+        ]
+      ],
+      "min_stops": 4,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "浦东新区",
+        "time_budget_minutes": 300,
+        "budget_per_person": 210,
+        "preferred_cuisines": [
+          "西餐",
+          "本帮菜"
+        ],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 4
+      }
+    }
+  },
+  {
+    "id": "tp-validation-178",
+    "query": "请在静安区安排一条上海日内路线，3人出行，游玩5小时，人均预算不超过200元，包含观光和吃饭，尽量安排4个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 178,
+      "level": "hard",
+      "days": 7,
+      "origin": "Newark",
+      "destination": "Florida",
+      "people_number": 3,
+      "budget": 10400,
+      "local_constraint": {
+        "house rule": "parties",
+        "cuisine": null,
+        "room type": "entire room",
+        "transportation": "no self-driving"
+      },
+      "query": "Can you generate a one-week travel itinerary for a group of 3 from Newark to Florida covering 3 cities from March 18th to March 24th, 2022? Our budget is $10,400. We require accommodations that are entire rooms. Although we won't be self-driving, we'd prefer locations that allow parties."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation",
+        "accommodation_house_rule",
+        "accommodation_room_type",
+        "intercity_transport_preference"
+      ],
+      "portable_constraint_coverage": 0.429,
+      "mapping": {
+        "district": "静安区",
+        "time_budget_minutes": 300,
+        "budget_per_person": 200,
+        "preferred_cuisines": [],
+        "poi_count": 4
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 4,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "静安区",
+        "time_budget_minutes": 300,
+        "budget_per_person": 200,
+        "preferred_cuisines": [],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 4
+      }
+    }
+  },
+  {
+    "id": "tp-validation-062",
+    "query": "请在黄浦区安排一条上海日内路线，2人出行，游玩3小时，人均预算不超过110元，包含观光和吃饭，餐饮可选本帮菜或西餐，尽量安排2个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 62,
+      "level": "medium",
+      "days": 3,
+      "origin": "Salt Lake City",
+      "destination": "Twin Falls",
+      "people_number": 2,
+      "budget": 1600,
+      "local_constraint": {
+        "house rule": null,
+        "cuisine": [
+          "Chinese",
+          "Mexican"
+        ],
+        "room type": null,
+        "transportation": null
+      },
+      "query": "Can you help me put together a 3-day travel plan for 2 people, departing from Salt Lake City and heading to Twin Falls, taking place from March 25th to March 27th, 2022? Our budget is $1,600. Regarding dining options, we are interested in enjoying both Chinese and Mexican meals."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals",
+        "cuisine"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation"
+      ],
+      "portable_constraint_coverage": 0.8,
+      "mapping": {
+        "district": "黄浦区",
+        "time_budget_minutes": 180,
+        "budget_per_person": 110,
+        "preferred_cuisines": [
+          "本帮菜",
+          "西餐"
+        ],
+        "poi_count": 2
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "本帮菜",
+          "西餐"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "黄浦区",
+        "time_budget_minutes": 180,
+        "budget_per_person": 110,
+        "preferred_cuisines": [
+          "本帮菜",
+          "西餐"
+        ],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 2
+      }
+    }
+  },
+  {
+    "id": "tp-validation-060",
+    "query": "请在黄浦区安排一条上海日内路线，4人出行，游玩3小时，人均预算不超过260元，包含观光和吃饭，尽量安排2个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 60,
+      "level": "medium",
+      "days": 3,
+      "origin": "New York",
+      "destination": "Reno",
+      "people_number": 4,
+      "budget": 11300,
+      "local_constraint": {
+        "house rule": "children under 10",
+        "cuisine": null,
+        "room type": null,
+        "transportation": null
+      },
+      "query": "Could you construct a 3-day travel plan, starting in New York and ending in Reno, for 4 people, including children under 10, from March 14th to March 16th, 2022? Our budget for this trip is set at $11,300. We require accommodations suitable for children under 10."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation",
+        "accommodation_house_rule"
+      ],
+      "portable_constraint_coverage": 0.6,
+      "mapping": {
+        "district": "黄浦区",
+        "time_budget_minutes": 180,
+        "budget_per_person": 260,
+        "preferred_cuisines": [],
+        "poi_count": 2
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 2,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "黄浦区",
+        "time_budget_minutes": 180,
+        "budget_per_person": 260,
+        "preferred_cuisines": [],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 2
+      }
+    }
+  },
+  {
+    "id": "tp-validation-091",
+    "query": "请在静安区安排一条上海日内路线，3人出行，游玩4小时，人均预算不超过110元，包含观光和吃饭，尽量安排3个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 91,
+      "level": "medium",
+      "days": 5,
+      "origin": "New Orleans",
+      "destination": "Florida",
+      "people_number": 3,
+      "budget": 4200,
+      "local_constraint": {
+        "house rule": null,
+        "cuisine": null,
+        "room type": "entire room",
+        "transportation": null
+      },
+      "query": "Can you design a 5-day travel plan for a group of 3? We wish to start in New Orleans and visit 2 cities in Florida from March 12th to March 16th, 2022. We've set a new budget of $4,200 for the trip. For our stay, we'd prefer to have entire rooms as our accommodations."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation",
+        "accommodation_room_type"
+      ],
+      "portable_constraint_coverage": 0.6,
+      "mapping": {
+        "district": "静安区",
+        "time_budget_minutes": 240,
+        "budget_per_person": 110,
+        "preferred_cuisines": [],
+        "poi_count": 3
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 3,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "静安区",
+        "time_budget_minutes": 240,
+        "budget_per_person": 110,
+        "preferred_cuisines": [],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 3
+      }
+    }
+  },
+  {
+    "id": "tp-validation-088",
+    "query": "请在黄浦区安排一条上海日内路线，7人出行，游玩4小时，人均预算不超过180元，包含观光和吃饭，尽量安排3个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 88,
+      "level": "medium",
+      "days": 5,
+      "origin": "Pittsburgh",
+      "destination": "Texas",
+      "people_number": 7,
+      "budget": 16100,
+      "local_constraint": {
+        "house rule": "children under 10",
+        "cuisine": null,
+        "room type": null,
+        "transportation": null
+      },
+      "query": "Could you create a 5-day travel itinerary starting from Pittsburgh and venturing into 2 cities in Texas from March 5th to March 9th, 2022, for a group of 7 people? Our budget is set at $16,100. It's important for us to stay in accommodations that permit children under the age of 10."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation",
+        "accommodation_house_rule"
+      ],
+      "portable_constraint_coverage": 0.6,
+      "mapping": {
+        "district": "黄浦区",
+        "time_budget_minutes": 240,
+        "budget_per_person": 180,
+        "preferred_cuisines": [],
+        "poi_count": 3
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 3,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "黄浦区",
+        "time_budget_minutes": 240,
+        "budget_per_person": 180,
+        "preferred_cuisines": [],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 3
+      }
+    }
+  },
+  {
+    "id": "tp-validation-116",
+    "query": "请在静安区安排一条上海日内路线，8人出行，游玩5小时，人均预算不超过120元，包含观光和吃饭，尽量安排4个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 116,
+      "level": "medium",
+      "days": 7,
+      "origin": "Rockford",
+      "destination": "Florida",
+      "people_number": 8,
+      "budget": 17000,
+      "local_constraint": {
+        "house rule": null,
+        "cuisine": null,
+        "room type": "entire room",
+        "transportation": null
+      },
+      "query": "Could you create a 7-day travel plan for a group of 8, starting from Rockford and visiting 3 cities in Florida from March 8th to March 14th, 2022? The budget allocated for this trip is $17,000. The accommodation preference is to have entire rooms for the group."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation",
+        "accommodation_room_type"
+      ],
+      "portable_constraint_coverage": 0.6,
+      "mapping": {
+        "district": "静安区",
+        "time_budget_minutes": 300,
+        "budget_per_person": 120,
+        "preferred_cuisines": [],
+        "poi_count": 4
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 4,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "静安区",
+        "time_budget_minutes": 300,
+        "budget_per_person": 120,
+        "preferred_cuisines": [],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 4
+      }
+    }
+  },
+  {
+    "id": "tp-validation-113",
+    "query": "请在徐汇区安排一条上海日内路线，7人出行，游玩5小时，人均预算不超过130元，包含观光和吃饭，尽量安排4个活动。",
+    "source": {
+      "benchmark": "TravelPlanner",
+      "split": "validation",
+      "row_index": 113,
+      "level": "medium",
+      "days": 7,
+      "origin": "Rapid City",
+      "destination": "Colorado",
+      "people_number": 7,
+      "budget": 16300,
+      "local_constraint": {
+        "house rule": null,
+        "cuisine": null,
+        "room type": "entire room",
+        "transportation": null
+      },
+      "query": "Could you design a 7-day travel plan starting March 11th and ending March 17th, 2022, for a group of 7 people? We intend to start from Rapid City and travel to 3 cities in Colorado. Our budget is about $16,300. For accommodations, we prefer having entire rooms."
+    },
+    "adaptation": {
+      "protocol": "gentrip-derived-v1",
+      "official_travelplanner_score": false,
+      "native_dimensions": [
+        "budget",
+        "attractions_and_meals"
+      ],
+      "adapted_dimensions": [
+        "destination_to_district",
+        "multi_day_to_day_duration"
+      ],
+      "unsupported_dimensions": [
+        "group_size_state",
+        "dated_inventory",
+        "accommodation",
+        "accommodation_room_type"
+      ],
+      "portable_constraint_coverage": 0.6,
+      "mapping": {
+        "district": "徐汇区",
+        "time_budget_minutes": 300,
+        "budget_per_person": 130,
+        "preferred_cuisines": [],
+        "poi_count": 4
+      }
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "must_satisfy_expectations": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 4,
+      "min_quality_score": 0.72,
+      "expected_constraints": {
+        "district": "徐汇区",
+        "time_budget_minutes": 300,
+        "budget_per_person": 130,
+        "preferred_cuisines": [],
+        "domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "poi_count": 4
+      }
+    }
+  }
+]

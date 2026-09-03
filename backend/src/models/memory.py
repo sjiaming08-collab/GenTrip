@@ -19,6 +19,9 @@ class MemoryContext(BaseModel):
     """
 
     session_id: str
+    session_version: int = 0
+    session_mode: str = "planning"
+    turn_count: int = 0
     dialog_summary: str = ""
     current_route: dict[str, Any] | None = None
     current_constraints: dict[str, Any] | None = None
@@ -29,3 +32,5 @@ class MemoryContext(BaseModel):
     recent_turns: list[dict[str, Any]] = Field(default_factory=list)
     memory_facts: list[dict[str, Any]] = Field(default_factory=list)
     user_profile: dict[str, Any] = Field(default_factory=dict)
+    pending_change: dict[str, Any] | None = None
+    rejected_change: dict[str, Any] | None = None

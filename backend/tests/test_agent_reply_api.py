@@ -31,6 +31,7 @@ async def test_session_api_returns_saved_turn(client):
     assert body["session_id"] == session_id
     assert body["turn_count"] == 1
     assert body["recent_turns"][0]["user_query"] == "徐汇逛吃"
+    assert response.json()["turn_id"] == body["recent_turns"][0]["turn_id"]
 
 
 @pytest.mark.asyncio
@@ -91,3 +92,28 @@ async def test_replan_succeeds_after_richer_poi_coverage(client):
 
     session = (await client.get(f"/api/v1/sessions/{session_id}")).json()
     assert session["latest_response"]["planning_outcome"] == "change_applied"
+    assert session["latest_response"]["turn_id"] == session["turns"][-1]["turn_id"]
+    assert session["turns"][-1]["diff_result"] is not None
+
+
+@pytest.mark.asyncio
+async def test_constraint_change_rebuilds_current_route_and_returns_versioned_diff(client):
+    session_id = "api-replan-global-001"
+    first = await client.post(
+        "/api/v1/routes/plan",
+        json={"query": "黄浦区逛展再吃饭，3小时", "session_id": session_id},
+    )
+    assert first.status_code == 200
+
+    changed = await client.post(
+        "/api/v1/routes/plan",
+        json={"query": "预算改成200元，其他不变", "session_id": session_id},
+    )
+
+    assert changed.status_code == 200
+    body = changed.json()
+    assert body["reply_type"] == "diff"
+    assert body["meta"]["turn_plan"]["turn_relation"] == "modify_current"
+    assert body["meta"]["turn_plan"]["recompute_scope"] == "global_rebuild"
+    assert body["route_results"]
+    assert body["diff_result"] is not None

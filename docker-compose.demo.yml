@@ -1,0 +1,48 @@
+services:
+  postgres:
+    mem_limit: 384m
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - effective_cache_size=192MB
+      - -c
+      - work_mem=2MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_connections=20
+
+  redis:
+    mem_limit: 128m
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 96mb
+      - --maxmemory-policy
+      - noeviction
+
+  api:
+    build:
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+    mem_limit: 384m
+    environment:
+      RUNTIME_TENANT_MAX_ACTIVE_RUNS: "1"
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ""
+      AUTH_COOKIE_SECURE: ${DEMO_AUTH_COOKIE_SECURE:-false}
+
+  worker:
+    build:
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+    mem_limit: 576m
+    environment:
+      RUNTIME_TENANT_MAX_ACTIVE_RUNS: "1"
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ""
+
+  frontend:
+    mem_limit: 64m

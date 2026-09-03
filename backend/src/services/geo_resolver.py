@@ -1,34 +1,29 @@
-"""Geo resolution for natural-language place mentions.
-
-This module is intentionally not wired into the planning graph yet. It provides
-a stable boundary for later integration: callers pass a user query and optional
-location mentions, and receive a normalized GeoScope that POI retrieval can use.
-"""
+"""Resolve natural-language place mentions into a WGS-84 GeoScope."""
 
 from __future__ import annotations
 
-import asyncio
 import json
 from functools import lru_cache
-from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 import httpx
 from pydantic import BaseModel, Field
 
+from ..config import settings
 from ..models.constraints import Assumption
+from ..resources import fixture_path
+from .coordinates import gcj02_to_wgs84, wgs84_to_gcj02
 
-FIXTURES_DIR = Path(__file__).resolve().parents[2] / "fixtures"
-GAZETTEER_PATH = FIXTURES_DIR / "geo_gazetteer.json"
+GAZETTEER_PATH = fixture_path("geo_gazetteer.json")
 
 DEFAULT_CITY = "上海"
 DEFAULT_RADIUS_M = 1500
-DEFAULT_DISTRICT = "徐汇区"
 
 
 class GeoCandidate(BaseModel):
     name: str
     place_type: str = "place"
+    city: str | None = None
     district: str | None = None
     business_area: str | None = None
     address: str | None = None
@@ -38,6 +33,7 @@ class GeoCandidate(BaseModel):
     confidence: float = 0.0
     source: str
     provider_poi_id: str | None = None
+    coord_system: Literal["wgs84"] = "wgs84"
     raw: dict = Field(default_factory=dict)
 
 
@@ -45,6 +41,7 @@ class GeoScope(BaseModel):
     raw_mentions: list[str] = Field(default_factory=list)
     resolved_name: str | None = None
     scope_type: str = "city"
+    city: str | None = None
     district: str | None = None
     business_area: str | None = None
     center_lat: float | None = None
@@ -52,14 +49,15 @@ class GeoScope(BaseModel):
     radius_m: int | None = None
     confidence: float = 0.0
     source: str = "none"
+    coord_system: Literal["wgs84"] = "wgs84"
     assumptions: list[Assumption] = Field(default_factory=list)
 
 
 class GeoProvider(Protocol):
-    async def search_place(self, keyword: str, *, city: str = DEFAULT_CITY) -> list[GeoCandidate]:
+    async def search_place(self, keyword: str, *, city: str | None = None) -> list[GeoCandidate]:
         ...
 
-    async def geocode(self, address: str, *, city: str = DEFAULT_CITY) -> list[GeoCandidate]:
+    async def geocode(self, address: str, *, city: str | None = None) -> list[GeoCandidate]:
         ...
 
     async def reverse_geocode(self, lat: float, lng: float) -> GeoCandidate | None:
@@ -77,6 +75,7 @@ def _candidate_from_gazetteer(item: dict, *, confidence: float | None = None) ->
     return GeoCandidate(
         name=item["name"],
         place_type=item.get("place_type") or "place",
+        city=item.get("city") or "上海市",
         district=item.get("district"),
         business_area=item.get("business_area"),
         lat=center.get("lat"),
@@ -94,7 +93,7 @@ class GazetteerGeoProvider:
     def __init__(self, entries: list[dict] | None = None) -> None:
         self.entries = entries if entries is not None else load_gazetteer()
 
-    async def search_place(self, keyword: str, *, city: str = DEFAULT_CITY) -> list[GeoCandidate]:
+    async def search_place(self, keyword: str, *, city: str | None = None) -> list[GeoCandidate]:
         keyword = keyword.strip()
         if not keyword:
             return []
@@ -104,13 +103,10 @@ class GazetteerGeoProvider:
             names = [item["name"], *(item.get("aliases") or [])]
             if keyword in names:
                 candidates.append(_candidate_from_gazetteer(item))
-            elif any(keyword in name or name in keyword for name in names):
-                confidence = max(0.0, float(item.get("confidence") or 0.8) - 0.08)
-                candidates.append(_candidate_from_gazetteer(item, confidence=confidence))
 
         return sorted(candidates, key=lambda c: c.confidence, reverse=True)
 
-    async def geocode(self, address: str, *, city: str = DEFAULT_CITY) -> list[GeoCandidate]:
+    async def geocode(self, address: str, *, city: str | None = None) -> list[GeoCandidate]:
         return await self.search_place(address, city=city)
 
     async def reverse_geocode(self, lat: float, lng: float) -> GeoCandidate | None:
@@ -118,11 +114,7 @@ class GazetteerGeoProvider:
 
 
 class AmapGeoProvider:
-    """Amap Web Service provider.
-
-    It is optional and not used by the current graph. Tests should mock this
-    provider instead of calling the network.
-    """
+    """Amap provider with GCJ-02 conversion isolated at this boundary."""
 
     def __init__(
         self,
@@ -142,33 +134,47 @@ class AmapGeoProvider:
         if self._client is not None:
             response = await self._client.get(path, params=params, timeout=self.timeout_sec)
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            self._validate_response(data)
+            return data
 
         async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout_sec) as client:
             response = await client.get(path, params=params)
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            self._validate_response(data)
+            return data
 
-    async def search_place(self, keyword: str, *, city: str = DEFAULT_CITY) -> list[GeoCandidate]:
+    @staticmethod
+    def _validate_response(data: dict) -> None:
+        if str(data.get("status")) != "1":
+            info = str(data.get("info") or "UNKNOWN_ERROR")
+            infocode = str(data.get("infocode") or "")
+            raise RuntimeError(f"Amap geo request failed: {info} ({infocode})")
+
+    async def search_place(self, keyword: str, *, city: str | None = None) -> list[GeoCandidate]:
+        params = {
+            "keywords": keyword,
+            "offset": 10,
+            "page": 1,
+            "extensions": "base",
+        }
+        if city:
+            params.update({"city": city, "citylimit": "true"})
         data = await self._get(
             "/v3/place/text",
-            {
-                "keywords": keyword,
-                "city": city,
-                "citylimit": "true",
-                "offset": 10,
-                "page": 1,
-                "extensions": "base",
-            },
+            params,
         )
         pois = data.get("pois") or []
         candidates = []
         for idx, poi in enumerate(pois):
-            location = _parse_amap_location(poi.get("location"))
+            gcj_location = _parse_amap_location(poi.get("location"))
+            location = gcj02_to_wgs84(*gcj_location) if gcj_location else None
             candidates.append(
                 GeoCandidate(
                     name=poi.get("name") or keyword,
                     place_type="poi",
+                    city=_amap_text(poi.get("cityname")) or _amap_text(poi.get("pname")),
                     district=poi.get("adname"),
                     business_area=poi.get("business_area") or None,
                     address=poi.get("address") if isinstance(poi.get("address"), str) else None,
@@ -183,22 +189,24 @@ class AmapGeoProvider:
             )
         return candidates
 
-    async def geocode(self, address: str, *, city: str = DEFAULT_CITY) -> list[GeoCandidate]:
+    async def geocode(self, address: str, *, city: str | None = None) -> list[GeoCandidate]:
+        params = {"address": address}
+        if city:
+            params["city"] = city
         data = await self._get(
             "/v3/geocode/geo",
-            {
-                "address": address,
-                "city": city,
-            },
+            params,
         )
         geocodes = data.get("geocodes") or []
         candidates = []
         for idx, item in enumerate(geocodes):
-            location = _parse_amap_location(item.get("location"))
+            gcj_location = _parse_amap_location(item.get("location"))
+            location = gcj02_to_wgs84(*gcj_location) if gcj_location else None
             candidates.append(
                 GeoCandidate(
                     name=item.get("formatted_address") or address,
                     place_type="address",
+                    city=_amap_text(item.get("city")) or _amap_text(item.get("province")),
                     district=item.get("district") or None,
                     business_area=None,
                     address=item.get("formatted_address") or None,
@@ -213,10 +221,11 @@ class AmapGeoProvider:
         return candidates
 
     async def reverse_geocode(self, lat: float, lng: float) -> GeoCandidate | None:
+        gcj_lat, gcj_lng = wgs84_to_gcj02(lat, lng)
         data = await self._get(
             "/v3/geocode/regeo",
             {
-                "location": f"{lng},{lat}",
+                "location": f"{gcj_lng},{gcj_lat}",
                 "extensions": "base",
             },
         )
@@ -227,6 +236,7 @@ class AmapGeoProvider:
         return GeoCandidate(
             name=regeocode.get("formatted_address") or "当前位置",
             place_type="current_location",
+            city=_amap_text(component.get("city")) or _amap_text(component.get("province")),
             district=component.get("district") or None,
             business_area=None,
             address=regeocode.get("formatted_address") or None,
@@ -249,15 +259,34 @@ def _parse_amap_location(value: str | None) -> tuple[float, float] | None:
         return None
 
 
+def _amap_text(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def build_default_geo_providers() -> list[GeoProvider]:
+    providers: list[GeoProvider] = [GazetteerGeoProvider()]
+    if settings.amap_api_key:
+        providers.append(
+            AmapGeoProvider(
+                settings.amap_api_key,
+                base_url=settings.amap_base_url,
+                timeout_sec=settings.amap_timeout_sec,
+            )
+        )
+    return providers
+
+
 class GeoResolver:
     def __init__(
         self,
         providers: list[GeoProvider] | None = None,
         *,
-        default_district: str = DEFAULT_DISTRICT,
+        default_city: str = DEFAULT_CITY,
+        default_district: str | None = None,
         default_radius_m: int = DEFAULT_RADIUS_M,
     ) -> None:
-        self.providers = providers if providers is not None else [GazetteerGeoProvider()]
+        self.providers = providers if providers is not None else build_default_geo_providers()
+        self.default_city = default_city
         self.default_district = default_district
         self.default_radius_m = default_radius_m
 
@@ -268,7 +297,8 @@ class GeoResolver:
         location_mentions: list[str] | None = None,
         user_lat: float | None = None,
         user_lng: float | None = None,
-        city: str = DEFAULT_CITY,
+        city: str | None = None,
+        district: str | None = None,
     ) -> GeoScope:
         mentions = _dedupe_preserve_order(location_mentions or extract_location_mentions(query))
 
@@ -278,7 +308,18 @@ class GeoResolver:
                 best = candidates[0]
                 return self._scope_from_candidate(best, raw_mentions=mentions)
 
-        if _nearby_requested(query) and user_lat is not None and user_lng is not None:
+        if district:
+            return GeoScope(
+                raw_mentions=mentions,
+                resolved_name=district,
+                scope_type="district",
+                city=city,
+                district=district,
+                confidence=0.9,
+                source="constraint_extract",
+            )
+
+        if user_lat is not None and user_lng is not None:
             candidate = await self._reverse_geocode(user_lat, user_lng)
             if candidate:
                 return self._scope_from_candidate(candidate, raw_mentions=mentions)
@@ -286,6 +327,7 @@ class GeoResolver:
                 raw_mentions=mentions,
                 resolved_name="当前位置",
                 scope_type="nearby",
+                city=city,
                 center_lat=user_lat,
                 center_lng=user_lng,
                 radius_m=self.default_radius_m,
@@ -293,16 +335,18 @@ class GeoResolver:
                 source="user_location",
             )
 
+        resolved_city = city or self.default_city
         assumption = Assumption(
-            slot="district",
-            assumed_value=self.default_district,
+            slot="city",
+            assumed_value=resolved_city,
             source="geo_resolver_default",
-            message=f"未识别到明确地点，默认推荐{self.default_district}",
+            message=f"未识别到明确地点，默认在{resolved_city}检索",
         )
         return GeoScope(
             raw_mentions=mentions,
-            resolved_name=self.default_district,
-            scope_type="district",
+            resolved_name=resolved_city,
+            scope_type="city",
+            city=resolved_city,
             district=self.default_district,
             radius_m=None,
             confidence=0.3,
@@ -310,35 +354,28 @@ class GeoResolver:
             assumptions=[assumption],
         )
 
-    async def _resolve_mentions(self, mentions: list[str], *, city: str) -> list[GeoCandidate]:
-        tasks = []
+    async def _resolve_mentions(self, mentions: list[str], *, city: str | None) -> list[GeoCandidate]:
         for mention in mentions:
             for provider in self.providers:
-                tasks.append(provider.search_place(mention, city=city))
-                if _looks_like_address(mention):
-                    tasks.append(provider.geocode(mention, city=city))
-        if not tasks:
-            return []
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        candidates: list[GeoCandidate] = []
-        for result in results:
-            if isinstance(result, Exception):
-                continue
-            candidates.extend(result)
-        return sorted(candidates, key=lambda c: c.confidence, reverse=True)
+                try:
+                    candidates = await provider.search_place(mention, city=city)
+                    if not candidates and _looks_like_address(mention):
+                        candidates = await provider.geocode(mention, city=city)
+                except Exception:
+                    continue
+                if candidates:
+                    return sorted(candidates, key=lambda c: c.confidence, reverse=True)
+        return []
 
     async def _reverse_geocode(self, lat: float, lng: float) -> GeoCandidate | None:
-        tasks = [provider.reverse_geocode(lat, lng) for provider in self.providers]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        candidates = [
-            item
-            for item in results
-            if isinstance(item, GeoCandidate)
-        ]
-        if not candidates:
-            return None
-        return sorted(candidates, key=lambda c: c.confidence, reverse=True)[0]
+        for provider in self.providers:
+            try:
+                candidate = await provider.reverse_geocode(lat, lng)
+            except Exception:
+                continue
+            if candidate is not None:
+                return candidate
+        return None
 
     def _scope_from_candidate(self, candidate: GeoCandidate, *, raw_mentions: list[str]) -> GeoScope:
         scope_type = candidate.place_type
@@ -353,6 +390,7 @@ class GeoResolver:
             raw_mentions=raw_mentions,
             resolved_name=candidate.name,
             scope_type=scope_type,
+            city=candidate.city,
             district=candidate.district,
             business_area=candidate.business_area,
             center_lat=candidate.lat,

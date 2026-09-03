@@ -8,6 +8,10 @@ from src.services.constraint_rules import (
     detect_domains,
     detect_excluded_categories,
     detect_minutes,
+    detect_poi_count,
+    detect_mobility_preferences,
+    detect_location_mentions,
+    derive_poi_count,
     detect_preferred_cuisines,
     detect_queue_tolerance_minutes,
     detect_return_by,
@@ -22,10 +26,52 @@ def test_detect_district_explicit():
     assert detect_district("想去静安区") == "静安区"
 
 
+def test_detect_named_nearby_location_without_guessing_district():
+    assert detect_location_mentions("明天和女朋友在西湖附近玩一天") == ["西湖"]
+    assert detect_location_mentions("杭州西湖附近喝咖啡") == ["西湖"]
+    assert detect_location_mentions("附近玩一天") == []
+
+    constraints, _ = rule_based_extract(
+        build_initial_state("明天和女朋友在西湖附近玩一天")
+    )
+    assert constraints.location_mentions == ["西湖"]
+    assert constraints.city is None
+    assert constraints.district is None
+    assert constraints.geo_relation == "nearby"
+
+
 def test_detect_budget_and_minutes():
     assert detect_budget("预算200元") == 200
     assert detect_minutes("逛吃3小时") == 180
     assert detect_minutes("半天") == 240
+
+
+def test_detect_explicit_poi_count_without_confusing_party_size():
+    assert detect_poi_count("3人出行，尽量安排4个活动") == 4
+    assert detect_poi_count("逛三个地点") == 3
+    assert detect_poi_count("三个人玩五小时") is None
+
+
+def test_detect_mobility_preferences():
+    assert detect_mobility_preferences("带老人出门，尽量少走路") == ["少走路"]
+
+
+def test_full_day_derives_a_five_stop_target():
+    assert detect_minutes("在黄浦区玩一天") == 480
+    assert detect_minutes("全天逛逛") == 480
+    assert derive_poi_count("在黄浦区玩一天", 480, suggested_count=2) == 5
+
+
+def test_explicit_stop_count_wins_over_full_day_derivation():
+    assert derive_poi_count("玩一天，只安排2个地点", 480, suggested_count=5) == 2
+
+
+def test_rule_based_extract_preserves_explicit_poi_count():
+    constraints, _ = rule_based_extract(build_initial_state("黄浦区玩5小时，安排4个活动"))
+
+    assert constraints.poi_count == 4
+    assert constraints.anchor_count_explicit == 4
+    assert constraints.poi_count_target == 4
 
 
 def test_derive_time_budget_from_explicit_time_window():
@@ -52,6 +98,8 @@ def test_detect_domains():
     assert detect_domains("徐汇区按摩足疗后去攀岩") == [IntentDomain.LEISURE]
     assert detect_domains("黄浦区玩电玩") == [IntentDomain.LEISURE]
     assert detect_domains("徐汇区逛商场") == [IntentDomain.SHOPPING]
+    assert detect_domains("徐汇区吃火锅再散步") == [IntentDomain.DINING, IntentDomain.SIGHTSEEING]
+    assert detect_domains("静安区逛书店再喝咖啡") == [IntentDomain.DINING, IntentDomain.SHOPPING]
 
 
 def test_detect_preferred_cuisines():
@@ -61,6 +109,8 @@ def test_detect_preferred_cuisines():
 
 def test_detect_excluded_categories():
     assert detect_excluded_categories("我不想去博物馆和公园") == ["博物馆", "公园"]
+    assert detect_excluded_categories("不去博物馆，想逛商场再喝咖啡") == ["博物馆"]
+    assert detect_excluded_categories("不想去美术馆想吃日料") == ["美术馆"]
 
 
 def test_rule_based_extract_chinese_food():
@@ -68,6 +118,7 @@ def test_rule_based_extract_chinese_food():
     constraints, _ = rule_based_extract(state)
     assert constraints.domains == [IntentDomain.DINING]
     assert constraints.preferred_cuisines == ["中餐"]
+    assert constraints.city == "上海市"
     assert constraints.district == "徐汇区"
 
 
@@ -75,12 +126,13 @@ def test_rule_based_extract_defaults():
     state = build_initial_state("附近有什么好玩的")
     constraints, assumptions = rule_based_extract(state)
 
-    assert constraints.district == "徐汇区"
+    assert constraints.city == "上海"
+    assert constraints.district is None
     assert constraints.budget_per_person == 150
     assert constraints.time_budget_minutes == 180
     assert len(assumptions) == 3
     slots = {a.slot for a in assumptions}
-    assert slots == {"district", "budget_per_person", "time_budget_minutes"}
+    assert slots == {"city", "budget_per_person", "time_budget_minutes"}
 
 
 def test_rule_based_extract_explicit():

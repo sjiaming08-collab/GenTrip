@@ -53,6 +53,14 @@ async def test_business_area_route_is_not_cached_as_default_district_bundle():
     district = await service.run_plan("我想在徐汇区附近玩三个小时", session_id="bundle-district")
 
     assert business_area["plan_path"] == "cold"
+    assert any(
+        item.get("phase") == "geo_resolve" and "business_area" in str(item.get("summary"))
+        for item in business_area["phase_log"]
+    )
     assert business_area["geo_scope"]["scope_type"] == "business_area"
+    assert any(
+        item.get("phase") == "route_bundle_ingest" and "skipped" in str(item.get("summary"))
+        for item in business_area["phase_log"]
+    )
     assert district["plan_path"] == "cold"
     assert district.get("matched_bundle_id") is None

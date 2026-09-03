@@ -11,9 +11,9 @@ from typing import Any
 from uuid import uuid4
 
 from ..config import settings
-from ..graph.plan_graph import create_plan_agent
+from ..graph.plan_graph import RESUMABLE_NODES, create_plan_agent, next_node_after_phase
 from ..graph.state import build_initial_state, llm_call_from_meta, token_usage_from_calls, utc_now_iso
-from ..llm.session_summary import summarize_session_with_meta
+from ..llm.session_summary import fallback_dialog_summary, summarize_session_with_meta
 from ..models.memory import MemoryContext
 from ..models.profile import UserProfile
 from ..models.reply import ReplyType
@@ -22,7 +22,16 @@ from ..observability.metrics import runtime_metrics
 from ..observability.tracing import finish_plan_run_span, inject_trace_context, start_plan_run_span
 from ..runtime.events import RuntimeEventBus
 from ..runtime.stage_observer import reset_stage_emitter, set_stage_emitter
-from ..runtime.store import DEFAULT_TENANT_ID, RuntimeStore, SessionVersionConflict, TenantRunCapacityExceeded, build_runtime_store
+from ..runtime.session_summary_queue import QueuedSessionSummary, RedisSessionSummaryQueue
+from ..runtime.store import (
+    DEFAULT_TENANT_ID,
+    InvalidRunStatusTransition,
+    RunIdempotencyConflict,
+    RuntimeStore,
+    SessionVersionConflict,
+    TenantRunCapacityExceeded,
+    build_runtime_store,
+)
 from ..runtime.task_queue import DeadLetterPlanRun, PlanTaskQueue, QueueUnavailable, RedisPlanTaskQueue
 
 
@@ -92,6 +101,7 @@ def response_snapshot(state: dict) -> dict[str, Any]:
     reply_type = infer_reply_type(state)
     return {
         "run_id": state["run_id"],
+        "turn_id": state.get("turn_id"),
         "session_id": state.get("session_id"),
         "run_status": state.get("run_status", "completed"),
         "plan_path": state.get("plan_path"),
@@ -102,6 +112,7 @@ def response_snapshot(state: dict) -> dict[str, Any]:
         "current_phase": state.get("current_phase", "done"),
         "reply_type": reply_type,
         "planning_outcome": state.get("planning_outcome", "pending"),
+        "diff_result": state.get("diff_result"),
         "meta": {
             "plan_path": state.get("plan_path"),
             "assumptions": state.get("assumptions", []),
@@ -114,8 +125,15 @@ def response_snapshot(state: dict) -> dict[str, Any]:
             "data_sources": sorted({str(item.get("source")) for item in (state.get("tool_calls") or []) if item.get("source")}),
             "degraded_reasons": degraded_reasons_from_state(state),
             "planning_decision": state.get("planning_decision"),
+            "turn_plan": state.get("turn_plan"),
             "pending_change": state.get("pending_change"),
             "rejected_change": state.get("rejected_change"),
+            "compiled_constraints": state.get("compiled_constraints"),
+            "active_policies": state.get("active_policies") or [],
+            "dropped_policies": state.get("dropped_policies") or [],
+            "blueprint_feasibility": state.get("blueprint_feasibility") or [],
+            "planning_failures": state.get("planning_failures") or [],
+            "repair_actions": state.get("repair_actions") or [],
             "token_usage": token_usage_from_calls(llm_calls),
             "debug_trace_id": state.get("trace_id") or state.get("run_id"),
         },
@@ -128,6 +146,7 @@ class PlanService:
         store: RuntimeStore | None = None,
         event_bus: RuntimeEventBus | None = None,
         task_queue: PlanTaskQueue | None = None,
+        summary_queue: RedisSessionSummaryQueue | None = None,
     ) -> None:
         self._agent = create_plan_agent()
         self._store = store or build_runtime_store(settings.database_url)
@@ -137,6 +156,7 @@ class PlanService:
         self._profiles = getattr(self._store, "profiles", {})
         self._tasks: dict[str, asyncio.Task[dict]] = {}
         self._task_queue = task_queue or RedisPlanTaskQueue()
+        self._summary_queue = summary_queue or RedisSessionSummaryQueue()
         self._initialized = False
         self._initialize_lock = asyncio.Lock()
 
@@ -357,6 +377,9 @@ class PlanService:
         profile_dict = profile.model_dump(mode="json") if profile else {}
         return MemoryContext(
             session_id=session.session_id,
+            session_version=session.version,
+            session_mode=session.mode,
+            turn_count=session.turn_count,
             dialog_summary=session.dialog_summary,
             current_route=session.current_route,
             current_constraints=session.current_constraints,
@@ -367,6 +390,8 @@ class PlanService:
             recent_turns=[turn.model_dump(mode="json") for turn in session.recent_turns],
             memory_facts=self._active_memory_facts(session.memory_facts),
             user_profile=profile_dict,
+            pending_change=session.pending_change,
+            rejected_change=session.rejected_change,
         ).model_dump(mode="json")
 
     @staticmethod
@@ -445,6 +470,7 @@ class PlanService:
                 route_results=route_results,
                 assumptions=state.get("assumptions", []),
                 presentation=state.get("presentation"),
+                diff_result=state.get("diff_result"),
                 assistant_message=(state.get("presentation") or {}).get("summary", ""),
             )
         )
@@ -463,19 +489,32 @@ class PlanService:
         else:
             session.mode = "planning"
 
-        session.dialog_summary, summary_meta = await summarize_session_with_meta(session)
+        if settings.session_summary_mode == "async_llm":
+            session.dialog_summary = fallback_dialog_summary(session)
+            summary_meta = {
+                "operation": "session_summary",
+                "status": "skipped",
+                "skip_reason": "queued_after_response",
+            }
+        else:
+            session.dialog_summary, summary_meta = await summarize_session_with_meta(session)
         llm_call = llm_call_from_meta(
             "session_summary",
             summary_meta,
             fallback_used=bool(summary_meta.get("fallback_used")),
         )
         state.setdefault("llm_calls", []).append(llm_call)
+        summary_phase_status = "queued" if settings.session_summary_mode == "async_llm" else "completed"
         state.setdefault("phase_log", []).append(
             {
                 "phase": "dialog_summary",
-                "status": "completed",
+                "status": summary_phase_status,
                 "ts": utc_now_iso(),
-                "summary": "updated session summary",
+                "summary": (
+                    "queued background session summary"
+                    if summary_phase_status == "queued"
+                    else "updated session summary"
+                ),
                 "llm_operation": llm_call["operation"],
                 "llm_status": llm_call["status"],
             }
@@ -490,6 +529,71 @@ class PlanService:
                 await self._mine_profile(profile, session)
                 await self._store.save_profile(session.tenant_id, profile)
         await self.save_session(session)
+
+    async def _enqueue_session_summary(self, session: SessionState, run_id: str) -> None:
+        if (
+            settings.session_summary_mode != "async_llm"
+            or not settings.llm_enabled
+            or not settings.llm_api_key
+            or not session.recent_turns
+        ):
+            return
+        latest_turn_id = session.recent_turns[-1].turn_id
+        try:
+            await self._summary_queue.enqueue(
+                session.tenant_id, session.session_id, latest_turn_id, run_id
+            )
+        except Exception:
+            logger.warning(
+                "session summary queue unavailable tenant=%s session=%s",
+                session.tenant_id,
+                session.session_id,
+            )
+
+    async def execute_session_summary(self, job: QueuedSessionSummary) -> str | None:
+        """Summarize the latest committed session and return a turn to requeue on conflict."""
+        snapshot = await self.load_session(job.session_id, tenant_id=job.tenant_id)
+        if snapshot is None or not snapshot.recent_turns:
+            return None
+        latest_turn_id = snapshot.recent_turns[-1].turn_id
+        if snapshot.dialog_summary_turn_id == latest_turn_id:
+            return None
+
+        summary, meta = await summarize_session_with_meta(snapshot)
+        if meta.get("status") == "failed":
+            raise RuntimeError(str(meta.get("error_code") or "session_summary_failed"))
+
+        current = await self.load_session(job.session_id, tenant_id=job.tenant_id)
+        if current is None:
+            return None
+        if current.version != snapshot.version:
+            return current.recent_turns[-1].turn_id if current.recent_turns else None
+
+        snapshot.dialog_summary = summary
+        snapshot.dialog_summary_turn_id = latest_turn_id
+        await self.save_session(snapshot)
+        llm_call = llm_call_from_meta(
+            "session_summary", meta, fallback_used=bool(meta.get("fallback_used"))
+        )
+        logger.info(
+            "session_summary_observed %s",
+            json.dumps({
+                "run_id": job.run_id,
+                "session_id": job.session_id,
+                "target_turn_id": latest_turn_id,
+                "llm_call": llm_call,
+            }, ensure_ascii=False),
+        )
+        try:
+            await self._emit(job.tenant_id, job.run_id, {
+                "phase": "dialog_summary",
+                "status": "completed",
+                "summary": "background session summary updated",
+                "data": {"llm_call": llm_call, "target_turn_id": latest_turn_id},
+            })
+        except Exception:
+            logger.warning("unable to append background summary event run=%s", job.run_id)
+        return None
 
     async def _emit(self, tenant_id: str, run_id: str, event: dict[str, Any]) -> dict[str, Any]:
         stored = await self._store.append_event(tenant_id, run_id, event)
@@ -511,6 +615,8 @@ class PlanService:
             "turn_mode": snapshot.get("turn_mode"),
             "planning_outcome": snapshot.get("planning_outcome", "pending"),
             "planning_decision": snapshot.get("planning_decision"),
+            "turn_plan": snapshot.get("turn_plan"),
+            "turn_context_meta": snapshot.get("turn_context_meta"),
             "pending_change": snapshot.get("pending_change"),
             "rejected_change": snapshot.get("rejected_change"),
             "degraded": bool(snapshot.get("degraded", False)),
@@ -550,14 +656,27 @@ class PlanService:
         }
 
     @staticmethod
-    def _checkpoint_state(snapshot: dict[str, Any]) -> dict[str, Any]:
-        """Persist bounded recovery evidence, not the raw LLM conversation."""
+    def _checkpoint_state(
+        snapshot: dict[str, Any],
+        *,
+        next_node: str,
+        session_version: int,
+    ) -> dict[str, Any]:
+        """Persist diagnostics plus the complete serializable graph state for resume."""
         route_results = snapshot.get("route_results") or []
+        graph_state = json.loads(json.dumps(snapshot, ensure_ascii=False, default=str))
+        graph_state.pop("_trace_context", None)
         return {
+            "checkpoint_version": 2,
+            "resume_next_node": next_node,
+            "session_version": session_version,
+            "graph_state": graph_state,
             "current_phase": snapshot.get("current_phase"),
             "plan_path": snapshot.get("plan_path"),
             "turn_mode": snapshot.get("turn_mode"),
             "planning_outcome": snapshot.get("planning_outcome", "pending"),
+            "turn_plan": snapshot.get("turn_plan"),
+            "turn_context_meta": snapshot.get("turn_context_meta"),
             "degraded": bool(snapshot.get("degraded", False)),
             "phase_log": list(snapshot.get("phase_log") or [])[-20:],
             "llm_calls": list(snapshot.get("llm_calls") or [])[-10:],
@@ -570,6 +689,39 @@ class PlanService:
             "validation_reports": list(snapshot.get("validation_reports") or [])[-10:],
             "relaxed_constraints": list(snapshot.get("relaxed_constraints") or [])[-20:],
         }
+
+    async def _restore_checkpoint_state(
+        self,
+        initial: dict[str, Any],
+        session: SessionState,
+    ) -> dict[str, Any]:
+        """Restore only a versioned checkpoint belonging to this exact queued turn."""
+        run_id = str(initial.get("run_id") or "")
+        checkpoint = await self._store.get_latest_run_checkpoint(session.tenant_id, run_id)
+        if not checkpoint:
+            return initial
+        payload = checkpoint.get("state") or {}
+        restored = payload.get("graph_state")
+        next_node = payload.get("resume_next_node")
+        identity_matches = (
+            isinstance(restored, dict)
+            and restored.get("run_id") == initial.get("run_id")
+            and restored.get("session_id") == initial.get("session_id")
+            and restored.get("tenant_id") == session.tenant_id
+            and restored.get("turn_id") == initial.get("turn_id")
+        )
+        if (
+            payload.get("checkpoint_version") != 2
+            or not identity_matches
+            or int(payload.get("session_version", -1)) != session.version
+            or next_node not in RESUMABLE_NODES
+        ):
+            return initial
+        restored["resume_next_node"] = next_node
+        restored["resumed_from_phase"] = checkpoint.get("phase")
+        restored["resume_count"] = int(restored.get("resume_count") or 0) + 1
+        restored["_trace_context"] = initial.get("_trace_context")
+        return restored
 
     async def _is_cancelled(self, tenant_id: str, run_id: str) -> bool:
         if await self._event_bus.is_cancelled(run_id):
@@ -623,10 +775,24 @@ class PlanService:
         started_at = time.perf_counter()
         terminal_status = "failed"
         await self._store.set_run_status(run_id, "running")
-        await self._emit(tenant_id, run_id, {"phase": "runtime", "status": "running", "summary": "plan run started"})
+        resumed_from = initial.get("resumed_from_phase")
+        await self._emit(
+            tenant_id,
+            run_id,
+            {
+                "phase": "runtime",
+                "status": "running",
+                "summary": f"plan run resumed after {resumed_from}" if resumed_from else "plan run started",
+                "data": {
+                    "resumed": bool(resumed_from),
+                    "resumed_from_phase": resumed_from,
+                    "resume_count": int(initial.get("resume_count") or 0),
+                },
+            },
+        )
         stage_token = set_stage_emitter(lambda event: self._emit(tenant_id, run_id, event))
         final_state: dict = initial
-        observed_phases = 0
+        observed_phases = len(initial.get("phase_log") or [])
         try:
             async with asyncio.timeout(settings.runtime_run_deadline_seconds):
                 async for snapshot in self._agent.astream(initial, stream_mode="values"):
@@ -637,13 +803,20 @@ class PlanService:
                     observed_phases = len(phase_log)
                     if phase_log:
                         latest_phase = phase_log[-1]
-                        await self._store.save_run_checkpoint(
-                            tenant_id,
-                            run_id,
-                            str(latest_phase.get("phase") or snapshot.get("current_phase") or "unknown"),
-                            observed_phases,
-                            self._checkpoint_state(snapshot),
-                        )
+                        phase_name = str(latest_phase.get("phase") or snapshot.get("current_phase") or "unknown")
+                        next_node = next_node_after_phase(phase_name, snapshot)
+                        if next_node:
+                            await self._store.save_run_checkpoint(
+                                tenant_id,
+                                run_id,
+                                phase_name,
+                                observed_phases,
+                                self._checkpoint_state(
+                                    snapshot,
+                                    next_node=next_node,
+                                    session_version=session.version,
+                                ),
+                            )
                     if await self._is_cancelled(tenant_id, run_id):
                         raise RunCancelled()
 
@@ -660,6 +833,7 @@ class PlanService:
                 run_id,
                 {"phase": "complete", "status": final_status, "summary": "plan result ready", "data": {"run_status": final_status}},
             )
+            await self._enqueue_session_summary(session, run_id)
             return final_state
         except SessionVersionConflict:
             terminal_status = "cancelled"
@@ -749,16 +923,26 @@ class PlanService:
         session_id = kwargs.get("session_id")
         idempotency_key = kwargs.get("idempotency_key")
         tenant_id = _tenant(kwargs.get("tenant_id"))
-        if session_id and idempotency_key:
+        if idempotency_key:
             await self.initialize()
-            existing = await self._store.find_run_by_idempotency(tenant_id, str(session_id), str(idempotency_key))
-            if existing and existing.get("status") not in {"failed", "cancelled"}:
+            existing = await self._store.find_run_by_idempotency(
+                tenant_id,
+                str(idempotency_key),
+                str(session_id) if session_id else None,
+            )
+            if existing:
                 return {"run_id": str(existing["run_id"]), "session_id": str(existing["session_id"])}
-        initial, session = await self._prepare_run(query, **kwargs)
+        try:
+            initial, session = await self._prepare_run(query, **kwargs)
+        except RunIdempotencyConflict as conflict:
+            return {"run_id": conflict.run_id, "session_id": conflict.session_id}
         run_id = initial["run_id"]
         if settings.runtime_execution_mode == "redis_stream":
             initial["_trace_context"] = inject_trace_context()
             await self.save_session(session)
+            memory_context = initial.get("memory_context") or {}
+            memory_context["session_version"] = session.version
+            initial["memory_context"] = memory_context
             try:
                 await self._task_queue.enqueue(initial, session.model_dump(mode="json"))
             except QueueUnavailable:
@@ -777,9 +961,21 @@ class PlanService:
         session = SessionState.model_validate(session_payload)
         run_id = str(initial.get("run_id") or "")
         run = await self._store.get_run(session.tenant_id, run_id)
-        if run is None or run.get("status") == "cancelled":
+        if run is None:
             return None
-        final_state = await self._execute_run(initial, session)
+        status = run.get("status")
+        error_code = run.get("error_code")
+        # A graph failure is persisted before the worker records its delivery
+        # attempt. Allow that same pending message to execute again; all other
+        # terminal outcomes remain idempotent and are acknowledged unchanged.
+        retryable_failure = (
+            (status == "failed" and error_code == "runtime_error")
+            or (status == "interrupted" and error_code == "worker_interrupted")
+        )
+        if status in _TERMINAL_RUN_STATUSES and not retryable_failure:
+            return None
+        execution_state = await self._restore_checkpoint_state(initial, session)
+        final_state = await self._execute_run(execution_state, session)
         if final_state.get("run_status") == "failed":
             raise QueuedRunFailed(str(final_state.get("error") or "plan_run_failed"))
         return final_state
@@ -807,7 +1003,10 @@ class PlanService:
         if not run or run.get("status") in _TERMINAL_RUN_STATUSES:
             return False
         await self._event_bus.cancel(run_id)
-        await self._store.set_run_status(run_id, "cancelled", error_code="cancelled")
+        try:
+            await self._store.set_run_status(run_id, "cancelled", error_code="cancelled")
+        except InvalidRunStatusTransition:
+            return False
         await self._emit(tenant, run_id, {"phase": "runtime", "status": "cancelled", "summary": "cancellation requested"})
         return True
 
@@ -817,7 +1016,13 @@ class PlanService:
 
     async def list_run_checkpoints(self, run_id: str, *, tenant_id: str | None = None) -> list[dict[str, Any]]:
         await self.initialize()
-        return await self._store.list_run_checkpoints(_tenant(tenant_id), run_id)
+        checkpoints = await self._store.list_run_checkpoints(_tenant(tenant_id), run_id)
+        public_rows: list[dict[str, Any]] = []
+        for checkpoint in checkpoints:
+            state = dict(checkpoint.get("state") or {})
+            state.pop("graph_state", None)
+            public_rows.append({**checkpoint, "state": state})
+        return public_rows
 
     async def list_dead_letters(self, *, limit: int = 100) -> list[DeadLetterPlanRun]:
         if not isinstance(self._task_queue, RedisPlanTaskQueue):

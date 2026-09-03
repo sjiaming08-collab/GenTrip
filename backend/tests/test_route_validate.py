@@ -144,3 +144,62 @@ async def test_route_validate_never_promotes_a_violating_route():
     by_route = {report["route_id"]: report for report in update["validation_reports"]}
     assert by_route["less_bad"]["feasible"] is False
     assert by_route["less_bad"]["violations"]
+
+
+@pytest.mark.asyncio
+async def test_route_validate_rejects_compact_route_for_full_day_target():
+    state = _state(
+        [_route("too_short", duration=120)],
+        raw_query="黄浦区玩一天",
+        poi_count=5,
+        time_budget_minutes=480,
+    )
+    state["route_generation_meta"] = {
+        "target_stop_count": 5,
+        "target_stop_count_enforced": True,
+    }
+
+    update = await route_validate(state)
+
+    assert update["valid_routes"] == []
+    assert any("少于目标的 5 站" in item for item in update["validation_reports"][0]["violations"])
+
+
+@pytest.mark.asyncio
+async def test_route_validate_uses_duration_derived_minimum_without_exact_target():
+    state = _state(
+        [_route("too_short", duration=120)],
+        raw_query="浦东新区玩5小时",
+        poi_count=4,
+        time_budget_minutes=300,
+    )
+    state["route_generation_meta"] = {
+        "target_stop_count": 4,
+        "target_stop_count_enforced": False,
+        "minimum_stop_count": 3,
+    }
+
+    update = await route_validate(state)
+
+    assert update["valid_routes"] == []
+    assert any("少于目标的 3 站" in item for item in update["validation_reports"][0]["violations"])
+
+
+@pytest.mark.asyncio
+async def test_blueprint_route_does_not_harden_duration_derived_target():
+    state = _state(
+        [_route("compact_blueprint", duration=120)],
+        raw_query="黄浦区玩一天",
+        poi_count=5,
+        time_budget_minutes=480,
+    )
+    state["route_generation_meta"] = {
+        "mode": "activity_blueprint",
+        "target_stop_count": 5,
+        "target_stop_count_enforced": False,
+        "minimum_stop_count": 0,
+    }
+
+    update = await route_validate(state)
+
+    assert update["valid_routes"][0]["plan_id"] == "compact_blueprint"

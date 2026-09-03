@@ -1,7 +1,8 @@
 import pytest
 
-from src.graph.nodes.route_generate import MAX_ROUTES, _derive_start_minute, route_generate
-from src.models.route import RoutePlan
+from src.graph.nodes.route_generate import MAX_ROUTES, _build_route, _derive_start_minute, route_generate
+from src.models.route import RoutePlan, ScoredPoi
+from src.services.poi_hours import next_opening_start
 
 
 def _poi(idx: int, *, dimension: str, category: str, lat: float, lng: float, rating: float = 4.6, price: int = 80):
@@ -47,6 +48,35 @@ def _state(
         "candidate_pois": pois,
         "candidate_pois_by_dim": grouped,
     }
+
+
+def test_next_opening_start_waits_for_dinner_service():
+    hours = [
+        {"days": "Mon-Sun", "open": "11:00", "close": "14:00"},
+        {"days": "Mon-Sun", "open": "17:00", "close": "22:00"},
+    ]
+
+    assert next_opening_start(hours, 15 * 60 + 30, 75, weekday=1) == 17 * 60
+
+
+@pytest.mark.asyncio
+async def test_build_route_preserves_first_poi_opening_wait():
+    poi = ScoredPoi.model_validate({
+        **_poi(1, dimension="leisure", category="健身", lat=31.213, lng=121.436),
+        "opening_hours": [{"days": "Mon-Sun", "open": "12:00", "close": "22:00"}],
+    })
+
+    route = await _build_route(
+        "opening-aware",
+        "first stop waits for opening",
+        (poi,),
+        start_minute=10 * 60,
+        weekday=1,
+        wait_for_first_opening=True,
+    )
+
+    assert route.stops[0].arrival_time == "12:00"
+    assert route.total_duration_min == 180
 
 
 def test_nearby_request_after_operating_window_uses_scene_default_time():
@@ -245,6 +275,61 @@ async def test_route_generate_shifts_assumed_start_to_opening_window():
 
 
 @pytest.mark.asyncio
+async def test_route_generate_treats_period_only_start_as_flexible_for_opening_hours():
+    pois = [
+        {
+            **_poi(1, dimension="shopping", category="商场", lat=31.181, lng=121.437),
+            "opening_hours": [{"days": "Mon-Sun", "open": "10:00", "close": "22:00"}],
+        },
+        {
+            **_poi(2, dimension="dining", category="日料", lat=31.182, lng=121.438),
+            "opening_hours": [{"days": "Mon-Sun", "open": "11:00", "close": "22:00"}],
+        },
+        {
+            **_poi(3, dimension="shopping", category="购物", lat=31.183, lng=121.439),
+            "opening_hours": [{"days": "Mon-Sun", "open": "10:00", "close": "22:00"}],
+        },
+    ]
+    state = _state(
+        pois,
+        domains=["shopping", "dining"],
+        raw_query="周末上午在徐汇区逛商场和吃饭，4个小时",
+        poi_count=3,
+        minutes=240,
+    )
+    state["constraints"]["start_at"] = "09:00"
+    state["input_ts"] = "2026-08-09T09:00:00+08:00"
+
+    update = await route_generate(state)
+
+    assert update["candidate_routes"]
+    # A period-only request is a flexible window. The selected route may start
+    # after the first opening time when its first POI opens later.
+    assert "10:00" <= update["route_generation_meta"]["start_time"] <= "12:00"
+    assert update["route_generation_meta"]["start_time_adjusted_for_hours"] is True
+
+
+@pytest.mark.asyncio
+async def test_route_generate_keeps_explicit_clock_start_hard():
+    poi = {
+        **_poi(1, dimension="shopping", category="商场", lat=31.181, lng=121.437),
+        "opening_hours": [{"days": "Mon-Sun", "open": "10:00", "close": "22:00"}],
+    }
+    state = _state(
+        [poi],
+        domains=["shopping"],
+        raw_query="上午9点出发逛商场",
+        poi_count=1,
+    )
+    state["constraints"]["start_at"] = "09:00"
+
+    update = await route_generate(state)
+
+    assert update["candidate_routes"] == []
+    assert update["route_generation_meta"]["start_time_adjusted_for_hours"] is False
+
+
+@pytest.mark.asyncio
 async def test_route_generate_deduplicates_same_named_pois_with_different_ids():
     pois = [
         _poi(1, dimension="dining", category="咖啡", lat=31.213, lng=121.436),
@@ -278,3 +363,59 @@ async def test_route_generate_keeps_name_exact_candidate_when_bucket_is_full():
 
     first_route = RoutePlan.model_validate(update["candidate_routes"][0])
     assert first_route.stops[0].poi_name == "用户点名日料"
+
+
+@pytest.mark.asyncio
+async def test_route_generate_fits_four_requested_activities_into_five_hours():
+    pois = [
+        _poi(
+            index,
+            dimension="dining" if index % 2 == 0 else "sightseeing",
+            category="西餐" if index % 2 == 0 else "观光",
+            lat=31.230 + index * 0.0002,
+            lng=121.470 + index * 0.0002,
+        )
+        for index in range(1, 9)
+    ]
+    state = _state(
+        pois,
+        domains=["sightseeing", "dining"],
+        raw_query="观光和吃饭，安排4个活动",
+        poi_count=4,
+        minutes=300,
+    )
+
+    update = await route_generate(state)
+
+    assert update["candidate_routes"]
+    assert max(len(route["stops"]) for route in update["candidate_routes"]) == 4
+    assert all(route["total_duration_min"] <= 300 for route in update["candidate_routes"])
+    assert update["route_generation_meta"]["visit_duration_cap_min"] == 62
+
+
+@pytest.mark.asyncio
+async def test_route_generate_keeps_full_day_routes_at_five_stops():
+    pois = [
+        _poi(
+            index,
+            dimension="sightseeing",
+            category="观光",
+            lat=31.230 + index * 0.0002,
+            lng=121.470 + index * 0.0002,
+        )
+        for index in range(1, 9)
+    ]
+    state = _state(
+        pois,
+        domains=["sightseeing"],
+        raw_query="黄浦区玩一天",
+        poi_count=5,
+        minutes=480,
+    )
+
+    update = await route_generate(state)
+
+    assert update["candidate_routes"]
+    assert all(len(route["stops"]) == 5 for route in update["candidate_routes"])
+    assert update["route_generation_meta"]["target_stop_count"] == 5
+    assert update["route_generation_meta"]["target_stop_count_enforced"] is True

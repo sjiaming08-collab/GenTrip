@@ -80,6 +80,8 @@ async def test_delete_category_and_request_cuisine_replaces_the_removed_stop():
         "target_category": "美术馆",
         "new_cuisine": "日料",
         "exclude_category": "美术馆",
+        "confidence": 1.0,
+        "source": "rule_fallback",
     }
     assert parsed["constraints"]["excluded_categories"] == ["美术馆"]
     assert locked["unlocked_slots"][0]["new_cuisine"] == "日料"
@@ -124,7 +126,26 @@ async def test_model_operation_list_executes_delete_then_add():
 
 
 @pytest.mark.asyncio
-async def test_explicit_replan_request_restarts_plan_with_current_utterance():
+async def test_replan_parse_prefers_canonical_turn_plan_operations():
+    state = build_initial_state("再增加一家日料")
+    state["session_current_route"] = {
+        "stops": [_stop(1, "公园", "襄阳公园"), _stop(2, "咖啡", "社区咖啡")],
+    }
+    state["replan_operations"] = [{"type": "delete", "target_seq": 1}]
+    state["turn_plan"] = {
+        "mode": "replan",
+        "operations": [{"type": "add", "after_seq": 2, "new_cuisine": "日料", "source": "llm"}],
+    }
+
+    parsed = await replan_parse(state)
+
+    assert [item["type"] for item in parsed["replan_operations"]] == ["add"]
+    assert parsed["turn_plan"]["operations"] == parsed["replan_operations"]
+    assert parsed["turn_plan"]["preserve_unmentioned_stops"] is True
+
+
+@pytest.mark.asyncio
+async def test_explicit_replan_request_rebuilds_current_goal_with_lineage():
     state = build_initial_state("我不去博物馆了，就是吃点东西，你重新为我规划一下呢")
     state["session_current_route"] = {
         "stops": [_stop(1, "公园", "襄阳公园"), _stop(2, "博物馆", "思南公馆")],
@@ -141,9 +162,14 @@ async def test_explicit_replan_request_restarts_plan_with_current_utterance():
 
     parsed = await replan_parse(state)
 
-    assert parsed["turn_mode"] == "plan"
-    assert parsed["run_mode"] == "plan"
-    assert parsed["constraints"] is None
+    assert parsed["turn_mode"] == "replan"
+    assert parsed["run_mode"] == "replan"
+    assert parsed["turn_relation"] == "modify_current"
+    assert parsed["recompute_scope"] == "global_rebuild"
+    assert parsed["constraints"]["district"] == "徐汇区"
+    assert parsed["turn_plan"]["mode"] == "replan"
+    assert parsed["turn_plan"]["operations"] == []
+    assert parsed["turn_plan"]["preserve_unmentioned_stops"] is True
 
 
 @pytest.mark.asyncio
@@ -158,3 +184,4 @@ async def test_generic_food_followup_has_rule_based_add_fallback():
 
     assert parsed["replan_operation"]["type"] == "add"
     assert parsed["replan_operation"]["new_cuisine"] == "美食"
+    assert parsed["replan_operation"]["source"] == "rule_fallback"

@@ -57,7 +57,12 @@ async def test_run_checkpoints_are_scoped_and_replace_the_same_phase_index():
     checkpoints = await store.list_run_checkpoints("default", run_id)
     assert len(checkpoints) == 1
     assert checkpoints[0]["state"]["current_phase"] == "updated"
+    latest = await store.get_latest_run_checkpoint("default", run_id)
+    assert latest is not None
+    assert latest["phase_index"] == 1
+    assert latest["state"]["current_phase"] == "updated"
     assert await store.list_run_checkpoints("another-tenant", run_id) == []
+    assert await store.get_latest_run_checkpoint("another-tenant", run_id) is None
 
 
 @pytest.mark.asyncio

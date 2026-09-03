@@ -6,7 +6,10 @@
     "expect": {
       "must_complete": true,
       "must_be_legal": true,
-      "required_domains": ["sightseeing", "dining"],
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
       "min_stops": 2,
       "min_quality_score": 0.78
     }
@@ -20,10 +23,16 @@
     "expect": {
       "must_complete": true,
       "must_be_legal": true,
-      "required_domains": ["dining"],
-      "required_category_groups": [["咖啡"]],
+      "required_domains": [
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "咖啡"
+        ]
+      ],
       "min_stops": 1,
-      "min_quality_score": 0.80
+      "min_quality_score": 0.8
     }
   },
   {
@@ -33,8 +42,18 @@
     "expect": {
       "must_complete": true,
       "must_be_legal": true,
-      "required_domains": ["sightseeing", "dining"],
-      "required_category_groups": [["博物馆"], ["咖啡"]],
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "博物馆"
+        ],
+        [
+          "咖啡"
+        ]
+      ],
       "min_stops": 2,
       "latest_departure": "18:00",
       "min_quality_score": 0.82
@@ -47,7 +66,9 @@
     "expect": {
       "must_complete": true,
       "must_be_legal": true,
-      "required_domains": ["sightseeing"],
+      "required_domains": [
+        "sightseeing"
+      ],
       "min_stops": 2,
       "min_quality_score": 0.78
     }
@@ -59,9 +80,522 @@
     "expect": {
       "must_complete": true,
       "must_be_legal": true,
-      "required_domains": ["shopping"],
+      "required_domains": [
+        "shopping"
+      ],
       "min_stops": 2,
       "min_quality_score": 0.78
+    }
+  },
+  {
+    "id": "huangpu_afternoon_three_hours",
+    "query": "黄浦区下午2点开始逛3小时，人均150元",
+    "description": "验证显式出发时间和时长预算同时生效。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "sightseeing"
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.78
+    }
+  },
+  {
+    "id": "huangpu_exclude_museum_shop_coffee",
+    "query": "黄浦区不去博物馆，想逛商场再喝咖啡，4小时，人均150元",
+    "description": "验证排除类目不会被后续购物和咖啡需求覆盖。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "shopping",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "购物"
+        ],
+        [
+          "咖啡"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.82
+    }
+  },
+  {
+    "id": "xuhui_hotpot_walk_queue_limit",
+    "query": "徐汇区吃火锅再散步，排队不超过20分钟，4小时，人均200元",
+    "description": "验证餐饮偏好、游玩组合与排队上限。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "dining",
+        "sightseeing"
+      ],
+      "required_category_groups": [
+        [
+          "火锅"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.82
+    }
+  },
+  {
+    "id": "huangpu_japanese_food_exhibit",
+    "query": "黄浦区先吃日料再看展，4小时，人均220元",
+    "description": "验证明确菜系和文化活动都被满足。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "dining",
+        "sightseeing"
+      ],
+      "required_category_groups": [
+        [
+          "日料"
+        ],
+        [
+          "文化艺术"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.82
+    }
+  },
+  {
+    "id": "jingan_bookstore_coffee_afternoon",
+    "query": "静安区下午逛书店再喝咖啡，3小时，人均120元",
+    "description": "验证下午时段、购物子类和咖啡组合。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "shopping",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "购物"
+        ],
+        [
+          "咖啡"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.82
+    }
+  },
+  {
+    "id": "generated_route_徐汇_leisure_food",
+    "query": "徐汇区按摩放松再吃日料，5小时，人均260元",
+    "description": "跨域多站点路线需满足预算、时间、类别覆盖和独立合法性校验。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "leisure",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "日料"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_route_徐汇_sport_coffee",
+    "query": "徐汇区健身再喝咖啡，4小时，人均180元",
+    "description": "跨域多站点路线需满足预算、时间、类别覆盖和独立合法性校验。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "leisure",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "咖啡"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_route_徐汇_shopping_food",
+    "query": "徐汇区逛商场再吃饭，4小时，人均180元",
+    "description": "跨域多站点路线需满足预算、时间、类别覆盖和独立合法性校验。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "shopping",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_route_徐汇_park_dessert",
+    "query": "徐汇区公园散步再吃甜品，4小时，人均160元",
+    "description": "跨域多站点路线需满足预算、时间、类别覆盖和独立合法性校验。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "甜品"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_route_静安_leisure_food",
+    "query": "静安区按摩放松再吃日料，5小时，人均260元",
+    "description": "跨域多站点路线需满足预算、时间、类别覆盖和独立合法性校验。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "leisure",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "日料"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_route_静安_sport_coffee",
+    "query": "静安区健身再喝咖啡，4小时，人均180元",
+    "description": "跨域多站点路线需满足预算、时间、类别覆盖和独立合法性校验。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "leisure",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "咖啡"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_route_静安_shopping_food",
+    "query": "静安区逛商场再吃饭，4小时，人均180元",
+    "description": "跨域多站点路线需满足预算、时间、类别覆盖和独立合法性校验。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "shopping",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_route_静安_park_dessert",
+    "query": "静安区公园散步再吃甜品，4小时，人均160元",
+    "description": "跨域多站点路线需满足预算、时间、类别覆盖和独立合法性校验。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "甜品"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_route_黄浦_leisure_food",
+    "query": "黄浦区按摩放松再吃日料，5小时，人均260元",
+    "description": "跨域多站点路线需满足预算、时间、类别覆盖和独立合法性校验。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "leisure",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "日料"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_route_黄浦_sport_coffee",
+    "query": "黄浦区健身再喝咖啡，4小时，人均180元",
+    "description": "跨域多站点路线需满足预算、时间、类别覆盖和独立合法性校验。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "leisure",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "咖啡"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_route_黄浦_shopping_food",
+    "query": "黄浦区逛商场再吃饭，4小时，人均180元",
+    "description": "跨域多站点路线需满足预算、时间、类别覆盖和独立合法性校验。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "shopping",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_route_黄浦_park_dessert",
+    "query": "黄浦区公园散步再吃甜品，4小时，人均160元",
+    "description": "跨域多站点路线需满足预算、时间、类别覆盖和独立合法性校验。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "甜品"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_route_浦东新_leisure_food",
+    "query": "浦东新区按摩放松再吃日料，5小时，人均260元",
+    "description": "跨域多站点路线需满足预算、时间、类别覆盖和独立合法性校验。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "leisure",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "日料"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_route_浦东新_sport_coffee",
+    "query": "浦东新区健身再喝咖啡，4小时，人均180元",
+    "description": "跨域多站点路线需满足预算、时间、类别覆盖和独立合法性校验。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "leisure",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "咖啡"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_route_浦东新_shopping_food",
+    "query": "浦东新区逛商场再吃饭，4小时，人均180元",
+    "description": "跨域多站点路线需满足预算、时间、类别覆盖和独立合法性校验。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "shopping",
+        "dining"
+      ],
+      "required_category_groups": [],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_route_浦东新_park_dessert",
+    "query": "浦东新区公园散步再吃甜品，4小时，人均160元",
+    "description": "跨域多站点路线需满足预算、时间、类别覆盖和独立合法性校验。",
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "sightseeing",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "甜品"
+        ]
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_fault_徐汇_travel_provider",
+    "query": "徐汇区逛商场再喝咖啡，4小时，人均180元",
+    "description": "模拟外部交通 HTTP Provider 连接失败，验证本地估算回退后路线仍合法。",
+    "simulate": {
+      "travel_time_http_failure": true
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "shopping",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "咖啡"
+        ]
+      ],
+      "required_tool_fallbacks": [
+        "travel_time"
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_fault_静安_travel_provider",
+    "query": "静安区逛商场再喝咖啡，4小时，人均180元",
+    "description": "模拟外部交通 HTTP Provider 连接失败，验证本地估算回退后路线仍合法。",
+    "simulate": {
+      "travel_time_http_failure": true
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "shopping",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "咖啡"
+        ]
+      ],
+      "required_tool_fallbacks": [
+        "travel_time"
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_fault_黄浦_travel_provider",
+    "query": "黄浦区逛商场再喝咖啡，4小时，人均180元",
+    "description": "模拟外部交通 HTTP Provider 连接失败，验证本地估算回退后路线仍合法。",
+    "simulate": {
+      "travel_time_http_failure": true
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "shopping",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "咖啡"
+        ]
+      ],
+      "required_tool_fallbacks": [
+        "travel_time"
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.75
+    }
+  },
+  {
+    "id": "generated_fault_浦东新_travel_provider",
+    "query": "浦东新区逛商场再喝咖啡，4小时，人均180元",
+    "description": "模拟外部交通 HTTP Provider 连接失败，验证本地估算回退后路线仍合法。",
+    "simulate": {
+      "travel_time_http_failure": true
+    },
+    "expect": {
+      "must_complete": true,
+      "must_be_legal": true,
+      "required_domains": [
+        "shopping",
+        "dining"
+      ],
+      "required_category_groups": [
+        [
+          "咖啡"
+        ]
+      ],
+      "required_tool_fallbacks": [
+        "travel_time"
+      ],
+      "min_stops": 2,
+      "min_quality_score": 0.75
     }
   }
 ]

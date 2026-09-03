@@ -1,0 +1,5059 @@
+{
+  "metadata": {
+    "name": "GenTrip LocalLifeBench",
+    "version": "local-life-v1-20260817",
+    "protocol": "gentrip-local-life-e2e-v1",
+    "created_on": "2026-08-17",
+    "inspiration": "TravelPlanner-style stratified constraint and itinerary evaluation",
+    "scope": "single-city local-life day planning and incremental replanning",
+    "official_travelplanner_score": false,
+    "poi_snapshot": "pois.json",
+    "fixed_input_ts": "2026-08-18T03:00:00+00:00",
+    "case_count": 120,
+    "conversation_count": 10,
+    "conversation_turn_count": 30,
+    "split_policy": "district-stratified single-turn cases; agent-stratified conversations",
+    "quality_gate": {
+      "minimum_constraint_pass_rate": 0.98,
+      "minimum_single_end_to_end_pass_rate": 0.9,
+      "minimum_mean_quality_score": 0.9,
+      "minimum_conversation_turn_pass_rate": 0.95
+    }
+  },
+  "agents": [
+    {
+      "id": "food",
+      "name": "美食餐饮规划",
+      "domain": "dining",
+      "primary_phrase": "吃本帮菜",
+      "primary_group": [
+        "本帮菜"
+      ],
+      "replacement_phrase": "日料",
+      "replacement_group": [
+        "日料"
+      ],
+      "budget": 220
+    },
+    {
+      "id": "city_walk",
+      "name": "城市观光规划",
+      "domain": "sightseeing",
+      "primary_phrase": "城市观光",
+      "primary_group": [
+        "观光"
+      ],
+      "replacement_phrase": "公园",
+      "replacement_group": [
+        "公园"
+      ],
+      "budget": 180
+    },
+    {
+      "id": "culture",
+      "name": "文化艺术规划",
+      "domain": "sightseeing",
+      "primary_phrase": "看艺术展",
+      "primary_group": [
+        "文化艺术"
+      ],
+      "replacement_phrase": "博物馆",
+      "replacement_group": [
+        "博物馆"
+      ],
+      "budget": 200
+    },
+    {
+      "id": "shopping",
+      "name": "商场购物规划",
+      "domain": "shopping",
+      "primary_phrase": "逛商场",
+      "primary_group": [
+        "商场",
+        "购物"
+      ],
+      "replacement_phrase": "商场",
+      "replacement_group": [
+        "商场",
+        "购物"
+      ],
+      "budget": 220
+    },
+    {
+      "id": "massage",
+      "name": "按摩足疗规划",
+      "domain": "leisure",
+      "primary_phrase": "做按摩",
+      "primary_group": [
+        "按摩足疗"
+      ],
+      "replacement_phrase": "足疗",
+      "replacement_group": [
+        "按摩足疗"
+      ],
+      "budget": 360
+    },
+    {
+      "id": "beauty",
+      "name": "美容美体规划",
+      "domain": "leisure",
+      "primary_phrase": "做美容",
+      "primary_group": [
+        "美容美体"
+      ],
+      "replacement_phrase": "美甲",
+      "replacement_group": [
+        "美容美体"
+      ],
+      "budget": 300
+    },
+    {
+      "id": "sports",
+      "name": "体育运动规划",
+      "domain": "leisure",
+      "primary_phrase": "去健身",
+      "primary_group": [
+        "体育运动"
+      ],
+      "replacement_phrase": "羽毛球",
+      "replacement_group": [
+        "体育运动"
+      ],
+      "budget": 260
+    },
+    {
+      "id": "gaming",
+      "name": "电玩游戏规划",
+      "domain": "leisure",
+      "primary_phrase": "玩电玩",
+      "primary_group": [
+        "电玩游戏"
+      ],
+      "replacement_phrase": "桌游",
+      "replacement_group": [
+        "电玩游戏"
+      ],
+      "budget": 240
+    },
+    {
+      "id": "performance",
+      "name": "演出娱乐规划",
+      "domain": "leisure",
+      "primary_phrase": "看演出",
+      "primary_group": [
+        "演出娱乐"
+      ],
+      "replacement_phrase": "电影院",
+      "replacement_group": [
+        "演出娱乐"
+      ],
+      "budget": 280
+    },
+    {
+      "id": "family",
+      "name": "亲子游乐规划",
+      "domain": "leisure",
+      "primary_phrase": "玩亲子乐园",
+      "primary_group": [
+        "亲子游乐"
+      ],
+      "replacement_phrase": "儿童乐园",
+      "replacement_group": [
+        "亲子游乐"
+      ],
+      "budget": 260
+    }
+  ],
+  "cases": [
+    {
+      "id": "llb-food-1-easy",
+      "split": "development",
+      "agent_id": "food",
+      "difficulty": "easy",
+      "query": "请在黄浦区安排吃本帮菜的路线，总时长3小时，人均预算不超过220元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "本帮菜"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 220,
+          "poi_count": 2,
+          "domains": [
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-food-1-medium",
+      "split": "development",
+      "agent_id": "food",
+      "difficulty": "medium",
+      "query": "黄浦区下午4点出发，先喝咖啡再吃日料，5小时，人均220元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "咖啡"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 300,
+          "start_at": "16:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 220,
+          "poi_count": 3,
+          "domains": [
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-food-1-hard",
+      "split": "development",
+      "agent_id": "food",
+      "difficulty": "hard",
+      "query": "黄浦区下午3点出发，21点前回，不吃火锅，先喝咖啡再吃本帮菜，人均220元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "本帮菜"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 220,
+          "poi_count": 4,
+          "domains": [
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-food-2-easy",
+      "split": "development",
+      "agent_id": "food",
+      "difficulty": "easy",
+      "query": "请在徐汇区安排吃本帮菜的路线，总时长3小时，人均预算不超过220元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "本帮菜"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 220,
+          "poi_count": 2,
+          "domains": [
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-food-2-medium",
+      "split": "development",
+      "agent_id": "food",
+      "difficulty": "medium",
+      "query": "徐汇区下午4点出发，先喝咖啡再吃日料，5小时，人均220元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "咖啡"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 300,
+          "start_at": "16:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 220,
+          "poi_count": 3,
+          "domains": [
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-food-2-hard",
+      "split": "development",
+      "agent_id": "food",
+      "difficulty": "hard",
+      "query": "徐汇区下午3点出发，21点前回，不吃火锅，先喝咖啡再吃本帮菜，人均220元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "本帮菜"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 220,
+          "poi_count": 4,
+          "domains": [
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-food-3-easy",
+      "split": "validation",
+      "agent_id": "food",
+      "difficulty": "easy",
+      "query": "请在静安区安排吃本帮菜的路线，总时长3小时，人均预算不超过220元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "本帮菜"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 220,
+          "poi_count": 2,
+          "domains": [
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-food-3-medium",
+      "split": "validation",
+      "agent_id": "food",
+      "difficulty": "medium",
+      "query": "静安区下午4点出发，先喝咖啡再吃日料，5小时，人均220元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "咖啡"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 300,
+          "start_at": "16:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 220,
+          "poi_count": 3,
+          "domains": [
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-food-3-hard",
+      "split": "validation",
+      "agent_id": "food",
+      "difficulty": "hard",
+      "query": "静安区下午3点出发，21点前回，不吃火锅，先喝咖啡再吃本帮菜，人均220元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "本帮菜"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 220,
+          "poi_count": 4,
+          "domains": [
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-food-4-easy",
+      "split": "test",
+      "agent_id": "food",
+      "difficulty": "easy",
+      "query": "请在浦东新区安排吃本帮菜的路线，总时长3小时，人均预算不超过220元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "本帮菜"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 220,
+          "poi_count": 2,
+          "domains": [
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-food-4-medium",
+      "split": "test",
+      "agent_id": "food",
+      "difficulty": "medium",
+      "query": "浦东新区下午4点出发，先喝咖啡再吃日料，5小时，人均220元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "咖啡"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 300,
+          "start_at": "16:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 220,
+          "poi_count": 3,
+          "domains": [
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-food-4-hard",
+      "split": "test",
+      "agent_id": "food",
+      "difficulty": "hard",
+      "query": "浦东新区下午3点出发，21点前回，不吃火锅，先喝咖啡再吃本帮菜，人均220元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "本帮菜"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 220,
+          "poi_count": 4,
+          "domains": [
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-city_walk-1-easy",
+      "split": "development",
+      "agent_id": "city_walk",
+      "difficulty": "easy",
+      "query": "请在黄浦区安排城市观光的路线，总时长3小时，人均预算不超过180元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing"
+        ],
+        "required_category_groups": [
+          [
+            "观光"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 180,
+          "poi_count": 2,
+          "domains": [
+            "sightseeing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-city_walk-1-medium",
+      "split": "development",
+      "agent_id": "city_walk",
+      "difficulty": "medium",
+      "query": "黄浦区下午2点出发，先城市观光再喝咖啡，5小时，人均180元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "观光"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 180,
+          "poi_count": 3,
+          "domains": [
+            "sightseeing",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-city_walk-1-hard",
+      "split": "development",
+      "agent_id": "city_walk",
+      "difficulty": "hard",
+      "query": "黄浦区下午3点出发，21点前回，不吃火锅，先城市观光再吃日料，人均180元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "观光"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 180,
+          "poi_count": 4,
+          "domains": [
+            "sightseeing",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-city_walk-2-easy",
+      "split": "development",
+      "agent_id": "city_walk",
+      "difficulty": "easy",
+      "query": "请在徐汇区安排城市观光的路线，总时长3小时，人均预算不超过180元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing"
+        ],
+        "required_category_groups": [
+          [
+            "观光"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 180,
+          "poi_count": 2,
+          "domains": [
+            "sightseeing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-city_walk-2-medium",
+      "split": "development",
+      "agent_id": "city_walk",
+      "difficulty": "medium",
+      "query": "徐汇区下午2点出发，先城市观光再喝咖啡，5小时，人均180元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "观光"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 180,
+          "poi_count": 3,
+          "domains": [
+            "sightseeing",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-city_walk-2-hard",
+      "split": "development",
+      "agent_id": "city_walk",
+      "difficulty": "hard",
+      "query": "徐汇区下午3点出发，21点前回，不吃火锅，先城市观光再吃日料，人均180元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "观光"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 180,
+          "poi_count": 4,
+          "domains": [
+            "sightseeing",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-city_walk-3-easy",
+      "split": "validation",
+      "agent_id": "city_walk",
+      "difficulty": "easy",
+      "query": "请在静安区安排城市观光的路线，总时长3小时，人均预算不超过180元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing"
+        ],
+        "required_category_groups": [
+          [
+            "观光"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 180,
+          "poi_count": 2,
+          "domains": [
+            "sightseeing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-city_walk-3-medium",
+      "split": "validation",
+      "agent_id": "city_walk",
+      "difficulty": "medium",
+      "query": "静安区下午2点出发，先城市观光再喝咖啡，5小时，人均180元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "观光"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 180,
+          "poi_count": 3,
+          "domains": [
+            "sightseeing",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-city_walk-3-hard",
+      "split": "validation",
+      "agent_id": "city_walk",
+      "difficulty": "hard",
+      "query": "静安区下午3点出发，21点前回，不吃火锅，先城市观光再吃日料，人均180元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "观光"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 180,
+          "poi_count": 4,
+          "domains": [
+            "sightseeing",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-city_walk-4-easy",
+      "split": "test",
+      "agent_id": "city_walk",
+      "difficulty": "easy",
+      "query": "请在浦东新区安排城市观光的路线，总时长3小时，人均预算不超过180元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing"
+        ],
+        "required_category_groups": [
+          [
+            "观光"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 180,
+          "poi_count": 2,
+          "domains": [
+            "sightseeing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-city_walk-4-medium",
+      "split": "test",
+      "agent_id": "city_walk",
+      "difficulty": "medium",
+      "query": "浦东新区下午2点出发，先城市观光再喝咖啡，5小时，人均180元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "观光"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 180,
+          "poi_count": 3,
+          "domains": [
+            "sightseeing",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-city_walk-4-hard",
+      "split": "test",
+      "agent_id": "city_walk",
+      "difficulty": "hard",
+      "query": "浦东新区下午3点出发，21点前回，不吃火锅，先城市观光再吃日料，人均180元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "观光"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 180,
+          "poi_count": 4,
+          "domains": [
+            "sightseeing",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-culture-1-easy",
+      "split": "development",
+      "agent_id": "culture",
+      "difficulty": "easy",
+      "query": "请在黄浦区安排看艺术展的路线，总时长3小时，人均预算不超过200元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing"
+        ],
+        "required_category_groups": [
+          [
+            "文化艺术"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 200,
+          "poi_count": 2,
+          "domains": [
+            "sightseeing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-culture-1-medium",
+      "split": "development",
+      "agent_id": "culture",
+      "difficulty": "medium",
+      "query": "黄浦区下午2点出发，先看艺术展再喝咖啡，5小时，人均200元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "文化艺术"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 200,
+          "poi_count": 3,
+          "domains": [
+            "sightseeing",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-culture-1-hard",
+      "split": "development",
+      "agent_id": "culture",
+      "difficulty": "hard",
+      "query": "黄浦区下午3点出发，21点前回，不吃火锅，先看艺术展再吃日料，人均200元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "文化艺术"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 200,
+          "poi_count": 4,
+          "domains": [
+            "sightseeing",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-culture-2-easy",
+      "split": "development",
+      "agent_id": "culture",
+      "difficulty": "easy",
+      "query": "请在徐汇区安排看艺术展的路线，总时长3小时，人均预算不超过200元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing"
+        ],
+        "required_category_groups": [
+          [
+            "文化艺术"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 200,
+          "poi_count": 2,
+          "domains": [
+            "sightseeing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-culture-2-medium",
+      "split": "development",
+      "agent_id": "culture",
+      "difficulty": "medium",
+      "query": "徐汇区下午2点出发，先看艺术展再喝咖啡，5小时，人均200元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "文化艺术"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 200,
+          "poi_count": 3,
+          "domains": [
+            "sightseeing",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-culture-2-hard",
+      "split": "development",
+      "agent_id": "culture",
+      "difficulty": "hard",
+      "query": "徐汇区下午3点出发，21点前回，不吃火锅，先看艺术展再吃日料，人均200元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "文化艺术"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 200,
+          "poi_count": 4,
+          "domains": [
+            "sightseeing",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-culture-3-easy",
+      "split": "validation",
+      "agent_id": "culture",
+      "difficulty": "easy",
+      "query": "请在静安区安排看艺术展的路线，总时长3小时，人均预算不超过200元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing"
+        ],
+        "required_category_groups": [
+          [
+            "文化艺术"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 200,
+          "poi_count": 2,
+          "domains": [
+            "sightseeing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-culture-3-medium",
+      "split": "validation",
+      "agent_id": "culture",
+      "difficulty": "medium",
+      "query": "静安区下午2点出发，先看艺术展再喝咖啡，5小时，人均200元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "文化艺术"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 200,
+          "poi_count": 3,
+          "domains": [
+            "sightseeing",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-culture-3-hard",
+      "split": "validation",
+      "agent_id": "culture",
+      "difficulty": "hard",
+      "query": "静安区下午3点出发，21点前回，不吃火锅，先看艺术展再吃日料，人均200元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "文化艺术"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 200,
+          "poi_count": 4,
+          "domains": [
+            "sightseeing",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-culture-4-easy",
+      "split": "test",
+      "agent_id": "culture",
+      "difficulty": "easy",
+      "query": "请在浦东新区安排看艺术展的路线，总时长3小时，人均预算不超过200元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing"
+        ],
+        "required_category_groups": [
+          [
+            "文化艺术"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 200,
+          "poi_count": 2,
+          "domains": [
+            "sightseeing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-culture-4-medium",
+      "split": "test",
+      "agent_id": "culture",
+      "difficulty": "medium",
+      "query": "浦东新区下午2点出发，先看艺术展再喝咖啡，5小时，人均200元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "文化艺术"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 200,
+          "poi_count": 3,
+          "domains": [
+            "sightseeing",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-culture-4-hard",
+      "split": "test",
+      "agent_id": "culture",
+      "difficulty": "hard",
+      "query": "浦东新区下午3点出发，21点前回，不吃火锅，先看艺术展再吃日料，人均200元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "sightseeing",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "文化艺术"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 200,
+          "poi_count": 4,
+          "domains": [
+            "sightseeing",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-shopping-1-easy",
+      "split": "development",
+      "agent_id": "shopping",
+      "difficulty": "easy",
+      "query": "请在黄浦区安排逛商场的路线，总时长3小时，人均预算不超过220元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "shopping"
+        ],
+        "required_category_groups": [
+          [
+            "商场",
+            "购物"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 220,
+          "poi_count": 2,
+          "domains": [
+            "shopping"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-shopping-1-medium",
+      "split": "development",
+      "agent_id": "shopping",
+      "difficulty": "medium",
+      "query": "黄浦区下午2点出发，先逛商场再喝咖啡，5小时，人均220元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "shopping",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "商场",
+            "购物"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 220,
+          "poi_count": 3,
+          "domains": [
+            "shopping",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-shopping-1-hard",
+      "split": "development",
+      "agent_id": "shopping",
+      "difficulty": "hard",
+      "query": "黄浦区下午3点出发，21点前回，不吃火锅，先逛商场再吃日料，人均220元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "shopping",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "商场",
+            "购物"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 220,
+          "poi_count": 4,
+          "domains": [
+            "shopping",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-shopping-2-easy",
+      "split": "development",
+      "agent_id": "shopping",
+      "difficulty": "easy",
+      "query": "请在徐汇区安排逛商场的路线，总时长3小时，人均预算不超过220元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "shopping"
+        ],
+        "required_category_groups": [
+          [
+            "商场",
+            "购物"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 220,
+          "poi_count": 2,
+          "domains": [
+            "shopping"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-shopping-2-medium",
+      "split": "development",
+      "agent_id": "shopping",
+      "difficulty": "medium",
+      "query": "徐汇区下午2点出发，先逛商场再喝咖啡，5小时，人均220元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "shopping",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "商场",
+            "购物"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 220,
+          "poi_count": 3,
+          "domains": [
+            "shopping",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-shopping-2-hard",
+      "split": "development",
+      "agent_id": "shopping",
+      "difficulty": "hard",
+      "query": "徐汇区下午3点出发，21点前回，不吃火锅，先逛商场再吃日料，人均220元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "shopping",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "商场",
+            "购物"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 220,
+          "poi_count": 4,
+          "domains": [
+            "shopping",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-shopping-3-easy",
+      "split": "validation",
+      "agent_id": "shopping",
+      "difficulty": "easy",
+      "query": "请在静安区安排逛商场的路线，总时长3小时，人均预算不超过220元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "shopping"
+        ],
+        "required_category_groups": [
+          [
+            "商场",
+            "购物"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 220,
+          "poi_count": 2,
+          "domains": [
+            "shopping"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-shopping-3-medium",
+      "split": "validation",
+      "agent_id": "shopping",
+      "difficulty": "medium",
+      "query": "静安区下午2点出发，先逛商场再喝咖啡，5小时，人均220元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "shopping",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "商场",
+            "购物"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 220,
+          "poi_count": 3,
+          "domains": [
+            "shopping",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-shopping-3-hard",
+      "split": "validation",
+      "agent_id": "shopping",
+      "difficulty": "hard",
+      "query": "静安区下午3点出发，21点前回，不吃火锅，先逛商场再吃日料，人均220元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "shopping",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "商场",
+            "购物"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 220,
+          "poi_count": 4,
+          "domains": [
+            "shopping",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-shopping-4-easy",
+      "split": "test",
+      "agent_id": "shopping",
+      "difficulty": "easy",
+      "query": "请在浦东新区安排逛商场的路线，总时长3小时，人均预算不超过220元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "shopping"
+        ],
+        "required_category_groups": [
+          [
+            "商场",
+            "购物"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 220,
+          "poi_count": 2,
+          "domains": [
+            "shopping"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-shopping-4-medium",
+      "split": "test",
+      "agent_id": "shopping",
+      "difficulty": "medium",
+      "query": "浦东新区下午2点出发，先逛商场再喝咖啡，5小时，人均220元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "shopping",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "商场",
+            "购物"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 220,
+          "poi_count": 3,
+          "domains": [
+            "shopping",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-shopping-4-hard",
+      "split": "test",
+      "agent_id": "shopping",
+      "difficulty": "hard",
+      "query": "浦东新区下午3点出发，21点前回，不吃火锅，先逛商场再吃日料，人均220元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "shopping",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "商场",
+            "购物"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 220,
+          "poi_count": 4,
+          "domains": [
+            "shopping",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-massage-1-easy",
+      "split": "development",
+      "agent_id": "massage",
+      "difficulty": "easy",
+      "query": "请在黄浦区安排做按摩的路线，总时长3小时，人均预算不超过360元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "按摩足疗"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 360,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-massage-1-medium",
+      "split": "development",
+      "agent_id": "massage",
+      "difficulty": "medium",
+      "query": "黄浦区下午2点出发，先做按摩再喝咖啡，5小时，人均360元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "按摩足疗"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 360,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-massage-1-hard",
+      "split": "development",
+      "agent_id": "massage",
+      "difficulty": "hard",
+      "query": "黄浦区下午3点出发，21点前回，不吃火锅，先做按摩再吃日料，人均360元，安排3个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "按摩足疗"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 360,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-massage-2-easy",
+      "split": "development",
+      "agent_id": "massage",
+      "difficulty": "easy",
+      "query": "请在徐汇区安排做按摩的路线，总时长3小时，人均预算不超过360元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "按摩足疗"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 360,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-massage-2-medium",
+      "split": "development",
+      "agent_id": "massage",
+      "difficulty": "medium",
+      "query": "徐汇区下午2点出发，先做按摩再喝咖啡，5小时，人均360元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "按摩足疗"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 360,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-massage-2-hard",
+      "split": "development",
+      "agent_id": "massage",
+      "difficulty": "hard",
+      "query": "徐汇区下午3点出发，21点前回，不吃火锅，先做按摩再吃日料，人均360元，安排3个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "按摩足疗"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 360,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-massage-3-easy",
+      "split": "validation",
+      "agent_id": "massage",
+      "difficulty": "easy",
+      "query": "请在静安区安排做按摩的路线，总时长3小时，人均预算不超过360元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "按摩足疗"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 360,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-massage-3-medium",
+      "split": "validation",
+      "agent_id": "massage",
+      "difficulty": "medium",
+      "query": "静安区下午2点出发，先做按摩再喝咖啡，5小时，人均360元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "按摩足疗"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 360,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-massage-3-hard",
+      "split": "validation",
+      "agent_id": "massage",
+      "difficulty": "hard",
+      "query": "静安区下午3点出发，21点前回，不吃火锅，先做按摩再吃日料，人均360元，安排3个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "按摩足疗"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 360,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-massage-4-easy",
+      "split": "test",
+      "agent_id": "massage",
+      "difficulty": "easy",
+      "query": "请在浦东新区安排做按摩的路线，总时长3小时，人均预算不超过360元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "按摩足疗"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 360,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-massage-4-medium",
+      "split": "test",
+      "agent_id": "massage",
+      "difficulty": "medium",
+      "query": "浦东新区下午2点出发，先做按摩再喝咖啡，5小时，人均360元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "按摩足疗"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 360,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-massage-4-hard",
+      "split": "test",
+      "agent_id": "massage",
+      "difficulty": "hard",
+      "query": "浦东新区下午3点出发，21点前回，不吃火锅，先做按摩再吃日料，人均360元，安排3个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "按摩足疗"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 360,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-beauty-1-easy",
+      "split": "development",
+      "agent_id": "beauty",
+      "difficulty": "easy",
+      "query": "请在黄浦区安排做美容的路线，总时长3小时，人均预算不超过300元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "美容美体"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 300,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-beauty-1-medium",
+      "split": "development",
+      "agent_id": "beauty",
+      "difficulty": "medium",
+      "query": "黄浦区下午2点出发，先做美容再喝咖啡，5小时，人均300元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "美容美体"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 300,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-beauty-1-hard",
+      "split": "development",
+      "agent_id": "beauty",
+      "difficulty": "hard",
+      "query": "黄浦区下午3点出发，21点前回，不吃火锅，先做美容再吃日料，人均300元，安排3个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "美容美体"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 300,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-beauty-2-easy",
+      "split": "development",
+      "agent_id": "beauty",
+      "difficulty": "easy",
+      "query": "请在徐汇区安排做美容的路线，总时长3小时，人均预算不超过300元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "美容美体"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 300,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-beauty-2-medium",
+      "split": "development",
+      "agent_id": "beauty",
+      "difficulty": "medium",
+      "query": "徐汇区下午2点出发，先做美容再喝咖啡，5小时，人均300元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "美容美体"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 300,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-beauty-2-hard",
+      "split": "development",
+      "agent_id": "beauty",
+      "difficulty": "hard",
+      "query": "徐汇区下午3点出发，21点前回，不吃火锅，先做美容再吃日料，人均300元，安排3个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "美容美体"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 300,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-beauty-3-easy",
+      "split": "validation",
+      "agent_id": "beauty",
+      "difficulty": "easy",
+      "query": "请在静安区安排做美容的路线，总时长3小时，人均预算不超过300元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "美容美体"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 300,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-beauty-3-medium",
+      "split": "validation",
+      "agent_id": "beauty",
+      "difficulty": "medium",
+      "query": "静安区下午2点出发，先做美容再喝咖啡，5小时，人均300元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "美容美体"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 300,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-beauty-3-hard",
+      "split": "validation",
+      "agent_id": "beauty",
+      "difficulty": "hard",
+      "query": "静安区下午3点出发，21点前回，不吃火锅，先做美容再吃日料，人均300元，安排3个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "美容美体"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 300,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-beauty-4-easy",
+      "split": "test",
+      "agent_id": "beauty",
+      "difficulty": "easy",
+      "query": "请在浦东新区安排做美容的路线，总时长3小时，人均预算不超过300元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "美容美体"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 300,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-beauty-4-medium",
+      "split": "test",
+      "agent_id": "beauty",
+      "difficulty": "medium",
+      "query": "浦东新区下午2点出发，先做美容再喝咖啡，5小时，人均300元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "美容美体"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 300,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-beauty-4-hard",
+      "split": "test",
+      "agent_id": "beauty",
+      "difficulty": "hard",
+      "query": "浦东新区下午3点出发，21点前回，不吃火锅，先做美容再吃日料，人均300元，安排3个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "美容美体"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 300,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-sports-1-easy",
+      "split": "development",
+      "agent_id": "sports",
+      "difficulty": "easy",
+      "query": "请在黄浦区安排去健身的路线，总时长3小时，人均预算不超过260元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "体育运动"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 260,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-sports-1-medium",
+      "split": "development",
+      "agent_id": "sports",
+      "difficulty": "medium",
+      "query": "黄浦区下午2点出发，先去健身再喝咖啡，5小时，人均260元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "体育运动"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 260,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-sports-1-hard",
+      "split": "development",
+      "agent_id": "sports",
+      "difficulty": "hard",
+      "query": "黄浦区下午3点出发，21点前回，不吃火锅，先去健身再吃日料，人均260元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "体育运动"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 260,
+          "poi_count": 4,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-sports-2-easy",
+      "split": "development",
+      "agent_id": "sports",
+      "difficulty": "easy",
+      "query": "请在徐汇区安排去健身的路线，总时长3小时，人均预算不超过260元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "体育运动"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 260,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-sports-2-medium",
+      "split": "development",
+      "agent_id": "sports",
+      "difficulty": "medium",
+      "query": "徐汇区下午2点出发，先去健身再喝咖啡，5小时，人均260元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "体育运动"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 260,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-sports-2-hard",
+      "split": "development",
+      "agent_id": "sports",
+      "difficulty": "hard",
+      "query": "徐汇区下午3点出发，21点前回，不吃火锅，先去健身再吃日料，人均260元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "体育运动"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 260,
+          "poi_count": 4,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-sports-3-easy",
+      "split": "validation",
+      "agent_id": "sports",
+      "difficulty": "easy",
+      "query": "请在静安区安排去健身的路线，总时长3小时，人均预算不超过260元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "体育运动"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 260,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-sports-3-medium",
+      "split": "validation",
+      "agent_id": "sports",
+      "difficulty": "medium",
+      "query": "静安区下午2点出发，先去健身再喝咖啡，5小时，人均260元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "体育运动"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 260,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-sports-3-hard",
+      "split": "validation",
+      "agent_id": "sports",
+      "difficulty": "hard",
+      "query": "静安区下午3点出发，21点前回，不吃火锅，先去健身再吃日料，人均260元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "体育运动"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 260,
+          "poi_count": 4,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-sports-4-easy",
+      "split": "test",
+      "agent_id": "sports",
+      "difficulty": "easy",
+      "query": "请在浦东新区安排去健身的路线，总时长3小时，人均预算不超过260元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "体育运动"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 260,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-sports-4-medium",
+      "split": "test",
+      "agent_id": "sports",
+      "difficulty": "medium",
+      "query": "浦东新区下午2点出发，先去健身再喝咖啡，5小时，人均260元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "体育运动"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 260,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-sports-4-hard",
+      "split": "test",
+      "agent_id": "sports",
+      "difficulty": "hard",
+      "query": "浦东新区下午3点出发，21点前回，不吃火锅，先去健身再吃日料，人均260元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "体育运动"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 260,
+          "poi_count": 4,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-gaming-1-easy",
+      "split": "development",
+      "agent_id": "gaming",
+      "difficulty": "easy",
+      "query": "请在黄浦区安排玩电玩的路线，总时长3小时，人均预算不超过240元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "电玩游戏"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 240,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-gaming-1-medium",
+      "split": "development",
+      "agent_id": "gaming",
+      "difficulty": "medium",
+      "query": "黄浦区下午2点出发，先玩电玩再喝咖啡，5小时，人均240元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "电玩游戏"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 240,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-gaming-1-hard",
+      "split": "development",
+      "agent_id": "gaming",
+      "difficulty": "hard",
+      "query": "黄浦区下午3点出发，21点前回，不吃火锅，先玩电玩再吃日料，人均240元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "电玩游戏"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 240,
+          "poi_count": 4,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-gaming-2-easy",
+      "split": "development",
+      "agent_id": "gaming",
+      "difficulty": "easy",
+      "query": "请在徐汇区安排玩电玩的路线，总时长3小时，人均预算不超过240元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "电玩游戏"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 240,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-gaming-2-medium",
+      "split": "development",
+      "agent_id": "gaming",
+      "difficulty": "medium",
+      "query": "徐汇区下午2点出发，先玩电玩再喝咖啡，5小时，人均240元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "电玩游戏"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 240,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-gaming-2-hard",
+      "split": "development",
+      "agent_id": "gaming",
+      "difficulty": "hard",
+      "query": "徐汇区下午3点出发，21点前回，不吃火锅，先玩电玩再吃日料，人均240元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "电玩游戏"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 240,
+          "poi_count": 4,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-gaming-3-easy",
+      "split": "validation",
+      "agent_id": "gaming",
+      "difficulty": "easy",
+      "query": "请在静安区安排玩电玩的路线，总时长3小时，人均预算不超过240元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "电玩游戏"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 240,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-gaming-3-medium",
+      "split": "validation",
+      "agent_id": "gaming",
+      "difficulty": "medium",
+      "query": "静安区下午2点出发，先玩电玩再喝咖啡，5小时，人均240元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "电玩游戏"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 240,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-gaming-3-hard",
+      "split": "validation",
+      "agent_id": "gaming",
+      "difficulty": "hard",
+      "query": "静安区下午3点出发，21点前回，不吃火锅，先玩电玩再吃日料，人均240元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "电玩游戏"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 240,
+          "poi_count": 4,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-gaming-4-easy",
+      "split": "test",
+      "agent_id": "gaming",
+      "difficulty": "easy",
+      "query": "请在浦东新区安排玩电玩的路线，总时长3小时，人均预算不超过240元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "电玩游戏"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 240,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-gaming-4-medium",
+      "split": "test",
+      "agent_id": "gaming",
+      "difficulty": "medium",
+      "query": "浦东新区下午2点出发，先玩电玩再喝咖啡，5小时，人均240元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "电玩游戏"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 240,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-gaming-4-hard",
+      "split": "test",
+      "agent_id": "gaming",
+      "difficulty": "hard",
+      "query": "浦东新区下午3点出发，21点前回，不吃火锅，先玩电玩再吃日料，人均240元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "电玩游戏"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 240,
+          "poi_count": 4,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-performance-1-easy",
+      "split": "development",
+      "agent_id": "performance",
+      "difficulty": "easy",
+      "query": "请在黄浦区安排看演出的路线，总时长3小时，人均预算不超过280元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "演出娱乐"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 280,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-performance-1-medium",
+      "split": "development",
+      "agent_id": "performance",
+      "difficulty": "medium",
+      "query": "黄浦区下午2点出发，先看演出再喝咖啡，5小时，人均280元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "演出娱乐"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 280,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-performance-1-hard",
+      "split": "development",
+      "agent_id": "performance",
+      "difficulty": "hard",
+      "query": "黄浦区下午3点出发，21点前回，不吃火锅，先看演出再吃日料，人均280元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "演出娱乐"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 280,
+          "poi_count": 4,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-performance-2-easy",
+      "split": "development",
+      "agent_id": "performance",
+      "difficulty": "easy",
+      "query": "请在徐汇区安排看演出的路线，总时长3小时，人均预算不超过280元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "演出娱乐"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 280,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-performance-2-medium",
+      "split": "development",
+      "agent_id": "performance",
+      "difficulty": "medium",
+      "query": "徐汇区下午2点出发，先看演出再喝咖啡，5小时，人均280元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "演出娱乐"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 280,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-performance-2-hard",
+      "split": "development",
+      "agent_id": "performance",
+      "difficulty": "hard",
+      "query": "徐汇区下午3点出发，21点前回，不吃火锅，先看演出再吃日料，人均280元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "演出娱乐"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 280,
+          "poi_count": 4,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-performance-3-easy",
+      "split": "validation",
+      "agent_id": "performance",
+      "difficulty": "easy",
+      "query": "请在静安区安排看演出的路线，总时长3小时，人均预算不超过280元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "演出娱乐"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 280,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-performance-3-medium",
+      "split": "validation",
+      "agent_id": "performance",
+      "difficulty": "medium",
+      "query": "静安区下午2点出发，先看演出再喝咖啡，5小时，人均280元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "演出娱乐"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 280,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-performance-3-hard",
+      "split": "validation",
+      "agent_id": "performance",
+      "difficulty": "hard",
+      "query": "静安区下午3点出发，21点前回，不吃火锅，先看演出再吃日料，人均280元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "演出娱乐"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 280,
+          "poi_count": 4,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-performance-4-easy",
+      "split": "test",
+      "agent_id": "performance",
+      "difficulty": "easy",
+      "query": "请在浦东新区安排看演出的路线，总时长3小时，人均预算不超过280元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "演出娱乐"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 280,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-performance-4-medium",
+      "split": "test",
+      "agent_id": "performance",
+      "difficulty": "medium",
+      "query": "浦东新区下午2点出发，先看演出再喝咖啡，5小时，人均280元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "演出娱乐"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 280,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-performance-4-hard",
+      "split": "test",
+      "agent_id": "performance",
+      "difficulty": "hard",
+      "query": "浦东新区下午3点出发，21点前回，不吃火锅，先看演出再吃日料，人均280元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "演出娱乐"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 280,
+          "poi_count": 4,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-family-1-easy",
+      "split": "development",
+      "agent_id": "family",
+      "difficulty": "easy",
+      "query": "请在黄浦区安排玩亲子乐园的路线，总时长3小时，人均预算不超过260元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "亲子游乐"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 260,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-family-1-medium",
+      "split": "development",
+      "agent_id": "family",
+      "difficulty": "medium",
+      "query": "黄浦区下午2点出发，先玩亲子乐园再喝咖啡，5小时，人均260元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "亲子游乐"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 260,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-family-1-hard",
+      "split": "development",
+      "agent_id": "family",
+      "difficulty": "hard",
+      "query": "黄浦区下午3点出发，21点前回，不吃火锅，先玩亲子乐园再吃日料，人均260元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "亲子游乐"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "黄浦区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 260,
+          "poi_count": 4,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-family-2-easy",
+      "split": "development",
+      "agent_id": "family",
+      "difficulty": "easy",
+      "query": "请在徐汇区安排玩亲子乐园的路线，总时长3小时，人均预算不超过260元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "亲子游乐"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 260,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-family-2-medium",
+      "split": "development",
+      "agent_id": "family",
+      "difficulty": "medium",
+      "query": "徐汇区下午2点出发，先玩亲子乐园再喝咖啡，5小时，人均260元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "亲子游乐"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 260,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-family-2-hard",
+      "split": "development",
+      "agent_id": "family",
+      "difficulty": "hard",
+      "query": "徐汇区下午3点出发，21点前回，不吃火锅，先玩亲子乐园再吃日料，人均260元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "亲子游乐"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "徐汇区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 260,
+          "poi_count": 4,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-family-3-easy",
+      "split": "validation",
+      "agent_id": "family",
+      "difficulty": "easy",
+      "query": "请在静安区安排玩亲子乐园的路线，总时长3小时，人均预算不超过260元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "亲子游乐"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 260,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-family-3-medium",
+      "split": "validation",
+      "agent_id": "family",
+      "difficulty": "medium",
+      "query": "静安区下午2点出发，先玩亲子乐园再喝咖啡，5小时，人均260元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "亲子游乐"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 260,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-family-3-hard",
+      "split": "validation",
+      "agent_id": "family",
+      "difficulty": "hard",
+      "query": "静安区下午3点出发，21点前回，不吃火锅，先玩亲子乐园再吃日料，人均260元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "亲子游乐"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "静安区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 260,
+          "poi_count": 4,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-family-4-easy",
+      "split": "test",
+      "agent_id": "family",
+      "difficulty": "easy",
+      "query": "请在浦东新区安排玩亲子乐园的路线，总时长3小时，人均预算不超过260元，安排2个地点。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure"
+        ],
+        "required_category_groups": [
+          [
+            "亲子游乐"
+          ]
+        ],
+        "min_stops": 2,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 180,
+          "budget_per_person": 260,
+          "poi_count": 2,
+          "domains": [
+            "leisure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-family-4-medium",
+      "split": "test",
+      "agent_id": "family",
+      "difficulty": "medium",
+      "query": "浦东新区下午2点出发，先玩亲子乐园再喝咖啡，5小时，人均260元，安排3个地点，排队不超过30分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "亲子游乐"
+          ],
+          [
+            "咖啡"
+          ]
+        ],
+        "min_stops": 3,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 300,
+          "start_at": "14:00",
+          "queue_tolerance_minutes": 30,
+          "budget_per_person": 260,
+          "poi_count": 3,
+          "domains": [
+            "leisure",
+            "dining"
+          ]
+        }
+      }
+    },
+    {
+      "id": "llb-family-4-hard",
+      "split": "test",
+      "agent_id": "family",
+      "difficulty": "hard",
+      "query": "浦东新区下午3点出发，21点前回，不吃火锅，先玩亲子乐园再吃日料，人均260元，安排4个地点，排队最多20分钟。",
+      "expect": {
+        "must_complete": true,
+        "must_be_legal": true,
+        "must_satisfy_expectations": true,
+        "required_domains": [
+          "leisure",
+          "dining"
+        ],
+        "required_category_groups": [
+          [
+            "亲子游乐"
+          ],
+          [
+            "日料"
+          ]
+        ],
+        "min_stops": 4,
+        "min_quality_score": 0.72,
+        "expected_constraints": {
+          "district": "浦东新区",
+          "time_budget_minutes": 360,
+          "start_at": "15:00",
+          "return_by": "21:00",
+          "queue_tolerance_minutes": 20,
+          "budget_per_person": 260,
+          "poi_count": 4,
+          "domains": [
+            "leisure",
+            "dining"
+          ],
+          "excluded_categories": [
+            "火锅"
+          ]
+        }
+      }
+    }
+  ],
+  "conversations": [
+    {
+      "id": "llb-conversation-food",
+      "split": "development",
+      "agent_id": "food",
+      "turns": [
+        {
+          "query": "请在黄浦区安排吃本帮菜的路线，5小时，人均220元，安排1个地点。",
+          "expect": {
+            "turn_mode": "plan",
+            "required_category_groups": [
+              [
+                "本帮菜"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "把第1站换成日料",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "replace",
+            "required_category_groups": [
+              [
+                "日料"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "在第1站后再加一个咖啡店",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "add",
+            "required_category_groups": [
+              [
+                "咖啡"
+              ]
+            ],
+            "min_stops": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "llb-conversation-city_walk",
+      "split": "development",
+      "agent_id": "city_walk",
+      "turns": [
+        {
+          "query": "请在黄浦区安排城市观光的路线，5小时，人均180元，安排1个地点。",
+          "expect": {
+            "turn_mode": "plan",
+            "required_category_groups": [
+              [
+                "观光"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "把第1站换成公园",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "replace",
+            "required_category_groups": [
+              [
+                "公园"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "在第1站后再加一个咖啡店",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "add",
+            "required_category_groups": [
+              [
+                "咖啡"
+              ]
+            ],
+            "min_stops": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "llb-conversation-culture",
+      "split": "development",
+      "agent_id": "culture",
+      "turns": [
+        {
+          "query": "请在黄浦区安排看艺术展的路线，5小时，人均200元，安排1个地点。",
+          "expect": {
+            "turn_mode": "plan",
+            "required_category_groups": [
+              [
+                "文化艺术"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "把第1站换成博物馆",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "replace",
+            "required_category_groups": [
+              [
+                "博物馆"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "在第1站后再加一个咖啡店",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "add",
+            "required_category_groups": [
+              [
+                "咖啡"
+              ]
+            ],
+            "min_stops": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "llb-conversation-shopping",
+      "split": "development",
+      "agent_id": "shopping",
+      "turns": [
+        {
+          "query": "请在黄浦区安排逛商场的路线，5小时，人均220元，安排1个地点。",
+          "expect": {
+            "turn_mode": "plan",
+            "required_category_groups": [
+              [
+                "商场",
+                "购物"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "把第1站换成商场",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "replace",
+            "required_category_groups": [
+              [
+                "商场",
+                "购物"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "在第1站后再加一个咖啡店",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "add",
+            "required_category_groups": [
+              [
+                "咖啡"
+              ]
+            ],
+            "min_stops": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "llb-conversation-massage",
+      "split": "development",
+      "agent_id": "massage",
+      "turns": [
+        {
+          "query": "请在黄浦区安排做按摩的路线，5小时，人均360元，安排1个地点。",
+          "expect": {
+            "turn_mode": "plan",
+            "required_category_groups": [
+              [
+                "按摩足疗"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "把第1站换成足疗",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "replace",
+            "required_category_groups": [
+              [
+                "按摩足疗"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "在第1站后再加一个咖啡店",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "add",
+            "required_category_groups": [
+              [
+                "咖啡"
+              ]
+            ],
+            "min_stops": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "llb-conversation-beauty",
+      "split": "validation",
+      "agent_id": "beauty",
+      "turns": [
+        {
+          "query": "请在黄浦区安排做美容的路线，5小时，人均300元，安排1个地点。",
+          "expect": {
+            "turn_mode": "plan",
+            "required_category_groups": [
+              [
+                "美容美体"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "把第1站换成美甲",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "replace",
+            "required_category_groups": [
+              [
+                "美容美体"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "在第1站后再加一个咖啡店",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "add",
+            "required_category_groups": [
+              [
+                "咖啡"
+              ]
+            ],
+            "min_stops": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "llb-conversation-sports",
+      "split": "validation",
+      "agent_id": "sports",
+      "turns": [
+        {
+          "query": "请在黄浦区安排去健身的路线，5小时，人均260元，安排1个地点。",
+          "expect": {
+            "turn_mode": "plan",
+            "required_category_groups": [
+              [
+                "体育运动"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "把第1站换成羽毛球",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "replace",
+            "required_category_groups": [
+              [
+                "体育运动"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "在第1站后再加一个咖啡店",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "add",
+            "required_category_groups": [
+              [
+                "咖啡"
+              ]
+            ],
+            "min_stops": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "llb-conversation-gaming",
+      "split": "validation",
+      "agent_id": "gaming",
+      "turns": [
+        {
+          "query": "请在黄浦区安排玩电玩的路线，5小时，人均240元，安排1个地点。",
+          "expect": {
+            "turn_mode": "plan",
+            "required_category_groups": [
+              [
+                "电玩游戏"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "把第1站换成桌游",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "replace",
+            "required_category_groups": [
+              [
+                "电玩游戏"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "在第1站后再加一个咖啡店",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "add",
+            "required_category_groups": [
+              [
+                "咖啡"
+              ]
+            ],
+            "min_stops": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "llb-conversation-performance",
+      "split": "test",
+      "agent_id": "performance",
+      "turns": [
+        {
+          "query": "请在黄浦区安排看演出的路线，5小时，人均280元，安排1个地点。",
+          "expect": {
+            "turn_mode": "plan",
+            "required_category_groups": [
+              [
+                "演出娱乐"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "把第1站换成电影院",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "replace",
+            "required_category_groups": [
+              [
+                "演出娱乐"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "在第1站后再加一个咖啡店",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "add",
+            "required_category_groups": [
+              [
+                "咖啡"
+              ]
+            ],
+            "min_stops": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "llb-conversation-family",
+      "split": "test",
+      "agent_id": "family",
+      "turns": [
+        {
+          "query": "请在黄浦区安排玩亲子乐园的路线，5小时，人均260元，安排1个地点。",
+          "expect": {
+            "turn_mode": "plan",
+            "required_category_groups": [
+              [
+                "亲子游乐"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "把第1站换成儿童乐园",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "replace",
+            "required_category_groups": [
+              [
+                "亲子游乐"
+              ]
+            ],
+            "min_stops": 1
+          }
+        },
+        {
+          "query": "在第1站后再加一个咖啡店",
+          "expect": {
+            "turn_mode": "replan",
+            "operation": "add",
+            "required_category_groups": [
+              [
+                "咖啡"
+              ]
+            ],
+            "min_stops": 2
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -5,6 +5,8 @@ backend/.env
 
 # Downloaded third-party map extracts; reproduce with scripts/download_osm_extract.py.
 data/osm/
+# Downloaded TravelPlanner benchmark source data; reproduce with scripts/import_travelplanner.py.
+data/travelplanner/raw/
 
 # Python
 __pycache__/
@@ -13,8 +15,28 @@ __pycache__/
 .pytest_cache/
 .pytest_tmp/
 .pytest-tmp/
+.pytest-tmp-*/
+.pytest-*/
+.plan-audit-tmp/
+.tmp-*/
+.tmp/
+/tmp/
+/%SystemDrive%/
 backend/.tmp-pytest/
 .mypy_cache/
 .ruff_cache/
 venv/
 .venv/
+
+# JavaScript build and dependency artifacts
+node_modules/
+frontend/dist/
+.npm-cache/
+
+# Local runtime and evaluation output
+.runtime_logs/
+output/
+exports/
+# JMeter load-test output
+loadtest/results/
+data/travelplanner/

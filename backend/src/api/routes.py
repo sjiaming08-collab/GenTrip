@@ -313,8 +313,8 @@ async def health():
     return {
         "status": "ok" if all(required_dependencies) else "degraded",
         "app": settings.app_name,
-        "step": "A-cold-path",
-        "runtime_stage": "P2-turn-orchestrator",
+        "step": "local-beta",
+        "runtime_stage": "P1-runtime-core",
         "runtime_mode": "persistent" if plan_service.persistent else "in_memory_test",
         "dependencies": dependencies,
         "auth_enabled": settings.auth_enabled,

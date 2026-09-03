@@ -7,7 +7,9 @@ from ..state import GraphState, phase_update
 
 def _is_assumed(state: GraphState, slot: str) -> bool:
     return any(
-        item.get("slot") == slot and item.get("source") not in {"user", "explicit_user"}
+        item.get("slot") == slot
+        and item.get("source") not in {"user", "explicit_user"}
+        and item.get("overridable", True)
         for item in state.get("assumptions") or []
     )
 
@@ -33,7 +35,12 @@ async def auto_relax(state: GraphState) -> dict:
 
     geo_scope = state.get("geo_scope")
     widened_geo_scope = None
-    if (constraints.get("district") or geo_scope) and _is_assumed(state, "district"):
+    has_named_location = bool(constraints.get("location_mentions"))
+    if (
+        (constraints.get("district") or geo_scope)
+        and _is_assumed(state, "district")
+        and not has_named_location
+    ):
         widened_geo_scope = {
             "raw_mentions": [],
             "resolved_name": "上海市",

@@ -191,7 +191,18 @@ async def run_case(case: dict[str, Any]) -> list[dict[str, Any]]:
     session_id = f"golden-{case['id']}"
     states: list[dict[str, Any]] = []
     for turn in case["turns"]:
-        state = await service.run_plan(turn["query"], session_id=session_id)
+        if turn.get("action") == "cancel_run":
+            initial, _session = await service._prepare_run(turn["query"], session_id=session_id)
+            assert await service.cancel_run(initial["run_id"])
+            run = await service.get_run(initial["run_id"])
+            assert run is not None
+            state = {"run_id": initial["run_id"], "run_status": run["status"]}
+            assert state["run_status"] == turn["expect"]["run_status"]
+            states.append(state)
+            continue
+        initial, session = await service._prepare_run(turn["query"], session_id=session_id)
+        initial["input_ts"] = "2026-08-18T03:00:00+00:00"
+        state = await service._execute_run(initial, session)
         assert_turn(state, turn["expect"])
         states.append(state)
     return states

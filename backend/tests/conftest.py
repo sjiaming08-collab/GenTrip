@@ -18,6 +18,8 @@ def disable_live_llm(monkeypatch):
     monkeypatch.setattr(settings, "auth_enabled", False)
     monkeypatch.setattr(settings, "tenant_api_keys_json", "")
     monkeypatch.setattr(settings, "allow_insecure_tenant_id", True)
+    monkeypatch.setattr(settings, "poi_provider", "postgis")
+    monkeypatch.setattr(settings, "amap_api_key", "")
 
 
 @pytest.fixture(autouse=True)

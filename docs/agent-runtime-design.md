@@ -5,11 +5,13 @@
 
 ---
 
-## 0. 当前实现阶段（2026-07-18）
+## 0. 当前实现阶段（2026-09-02）
 
-当前代码已进入 **Planner V2**：Plan 在检索前执行 `planning_decision`，Plan/Replan/RouteBundle 统一由 `RouteJudge` 做硬约束判断，交通时间使用本地 Haversine mock 的乐观/期望/保守区间。完整 Plan 路径为：`constraint_extract → planning_decision → route_bundle_search → (hit: route_validate → bundle_rerank | miss: geo_resolve → poi_retrieve → route_generate → route_validate → route_evaluate → route_bundle_ingest) → route_present`。Replan 使用有界候选提案，只有通过统一校验后才原子提交。
+当前代码已进入 **Planner V3**。LLM 只提取当前 query 的显式语义并构思活动蓝图；`constraint_compile` 将事实统一编译为 Hard、Soft、Policy，默认值、记忆合并、时间窗口、POI、营业状态、交通和预算判断均由确定性节点负责。冷路径为：`constraint_extract → constraint_compile → planning_decision → route_bundle_search → geo_resolve → activity_blueprint → blueprint_compile → poi_retrieve → route_generate → route_validate → route_evaluate → route_bundle_ingest → route_present`。Bundle 命中仍跳过蓝图与检索。
 
-地点约束不再建议由 `constraint_extract` 直接硬输出固定 `district`。推荐链路是：用户地点表达 → `GeoResolver` → `GeoScope` → `poi_retrieve`。`district` 仍保留为兼容字段，但只是 `GeoScope` 的一种退化形式。
+`full_day` 是符号时间语义，不再等同于固定 480 分钟。默认 envelope 为最少 420、目标 540、最多 600 分钟，09:30 最早开始、20:30 最晚结束；这些是可撤销 Policy，不覆盖用户明确时间。Blueprint 在检索前按乐观/期望/保守时长预检，优先重排 flexible 活动绕开餐饮窗口，再删除冲突的 optional/policy 槽位。路线生成使用绝对时间 Beam Search，并在扩展候选时联合检查营业、交通、预算和总时长。
+
+地点约束不再由 `constraint_extract` 硬输出固定 `district`。当前链路是：显式地点/城市/地址或浏览器坐标 → `GeoResolver` → WGS-84 `GeoScope` → 高德周边检索或 PostGIS 半径过滤。`city`、`district` 是可选提示字段，任意行政区均可进入解析；显式地点优先于当前位置，当前位置优先于默认上海全市范围。
 ## 1. 设计目标与边界
 
 GenTrip 是 **单 Agent、推荐优先** 的本地出行规划系统：
@@ -94,7 +96,7 @@ GenTrip 是 **单 Agent、推荐优先** 的本地出行规划系统：
 | 4 | User Profile | 常去徐汇、偏爱日料、人均 150 |
 | 5 | 场景默认模板 | 逛吃：默认 3h / 人均 150 / 3 站；亲子：默认 5h / 2 站 |
 
-补全在 **`constraint_extract`** 节点完成，输出 `Constraints` + `assumptions[]`。只有地点或可用时间等关键前提无法安全推断时，`planning_decision` 才返回结构化澄清。
+显式语义在 **`constraint_extract`** 提取，补全与分级在 **`constraint_compile`** 完成，输出兼容 `Constraints`、V3 `CompiledConstraints` 与 `assumptions[]`。只有地点或可用时间等关键前提无法安全推断时，`planning_decision` 才返回结构化澄清。
 支持 **`return_by`（几点回家）** 与 **`time_budget_minutes`** 并存或二选一。
 
 ### 2.4 运行时优先级
@@ -138,9 +140,9 @@ Node Pipeline（节点流水线，同一 StateGraph 内）
 
 | 段 | 节点 | 职责 |
 |----|------|------|
-| 1 | `constraint_extract` + `planning_decision` | 提取约束并用交通/停留下界做前置可行性判断 |
-| 2 | `poi_retrieve` | 按约束召回候选 POI |
-| 3 | `route_generate` | 生成 **M 条**候选路线（非单条） |
+| 1 | `constraint_extract` + `constraint_compile` + `planning_decision` | 提取显式事实，编译 Hard/Soft/Policy，并做前置下界判断 |
+| 2 | `activity_blueprint` + `blueprint_compile` + `poi_retrieve` | 构思语义槽位，做无 POI 时间预检，再按槽位召回候选 |
+| 3 | `route_generate` | 用绝对时间与交通段联合搜索 **M 条**候选路线 |
 | 4 | `route_validate` | 硬约束：时长、预算、营业、可达性 |
 | 5 | `route_evaluate` | 合法路线多维打分（执行度、质量、偏好） |
 | 6 | `route_present` | 返回 **Top-K**（K=1～3）+ assumptions |
@@ -160,7 +162,7 @@ constraint_extract
 
 **耗时与线下化：** 最耗时为 [3] 多路线生成、[4] 校验（地图 API）、[5] 全量评估。RouteBundle 线下预存已 optimize、已校验、已评分的路线；线上 HOT 仅做轻量复验与 rerank。详见 [`graph-state-design.md`](graph-state-design.md)。
 
-**`auto_relax`：** 冷路径 `valid_routes` 为空时最多重试 1 轮；只允许放宽 assumptions 产生的默认预算、时长或区域，禁止修改用户明确的 `return_by`、排除项和已确认站点。仍不可行时返回 `infeasible`，不提升非法路线。
+**`failure_directed_repair`：** 冷路径 `valid_routes` 为空时最多修复 2 轮；按 `missing_candidate / temporal_conflict / opening_hours / budget / spatial` 原因执行局部扩大半径、移动或删除 optional/policy 槽位。命名地点、显式时间、排除项和硬预算不可被改写，也不会切换到另一座城市。仍不可行时返回 `infeasible`，不提升非法路线。
 
 **Top-K 输出：** 评估完成后取 `final_score` 最高的 1～3 条；分数接近时可返 2 条供用户点选，**不是澄清问答**。
 

@@ -1,321 +1,220 @@
-# 本地智能路线规划系统 (GenTrip / DeoReview)
+# GenTrip
 
-## 项目概述
+GenTrip 是一个面向城市本地出行的多轮路线规划 Agent。用户可以用自然语言描述区域、时间、预算、活动偏好和排除项，系统会检索 POI、生成并校验路线，并在后续对话中增删、替换或调整已有行程。
 
-基于 **LLM + 检索增强 + 路线优化** 的本地出行智能规划系统。用户用自然语言描述出行目标，系统整合 POI 数据、UGC 评论与用户历史偏好，自动生成可执行的多站点路线方案，并在行程中支持动态调整。
+项目采用 Vue 3 + FastAPI + LangGraph，使用 PostgreSQL/PostGIS 保存业务数据和完成空间检索，使用 Redis 保存热状态并通过 Redis Streams 执行异步任务。DeepSeek 负责意图理解、路线评价和自然语言展示；时间、费用、营业状态与硬约束由确定性代码校验。Prometheus、OpenTelemetry、Tempo 和 Grafana 提供运行观测。
 
-**业务背景（赛题需求来源）：**
-
-- 解决用户「多目的地串联、决策成本高」的痛点（时间 / 预算 / 排队 / 偏好等多目标权衡）
-- 交付能力：**路线生成**（多 POI 连贯排程）+ **多条件个性化**（约束满足 + 历史偏好）
-
-**系统设计原则：**
-
-- **数据驱动规划，LLM 负责理解与解释，Optimizer 负责可行与高效**
-- **同步 API 要短，重计算走异步 Worker**
-- **POI + UGC + 用户画像** 与 **路线模板缓存** 分层，互不替代
-- 按生产标准设计：**高并发、高可用、可观测、可降级、可演进**
-
----
-
-## 目标架构（生产级分层）
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  客户端：Vue 3 H5 / Web                                          │
-└────────────────────────────┬────────────────────────────────────┘
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  接入层：CDN + WAF                                               │
-└────────────────────────────┬────────────────────────────────────┘
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  网关层：APISIX / Kong — 鉴权、限流、路由、灰度                  │
-└────────────────────────────┬────────────────────────────────────┘
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  同步业务层（高 QPS，无状态）                                     │
-│  Route API · POI API · User Profile API                         │
-│  职责：校验 → 写 task → 发 MQ → 立即返回 task_id + SSE URL       │
-└────────────────────────────┬────────────────────────────────────┘
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  异步编排层（长任务）                                             │
-│  RocketMQ/Kafka → Plan Worker（LangGraph 执行器）                │
-│  职责：意图解析 → 混合检索 → 分支生成 → 优化 → 校验 → 渲染       │
-└────────────────────────────┬────────────────────────────────────┘
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  AI 能力层                                                       │
-│  LLM Gateway（路由/降级/计量）· Embedding Service · RAG         │
-└────────────────────────────┬────────────────────────────────────┘
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  数据层                                                          │
-│  PostgreSQL · Elasticsearch · Milvus/pgvector · Redis · OSS     │
-└────────────────────────────┬────────────────────────────────────┘
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  平台层：OpenTelemetry · Prometheus/Grafana · Loki · Jaeger      │
-│         Sentinel（熔断限流）· Nacos（配置中心）· K8s + ArgoCD     │
-└─────────────────────────────────────────────────────────────────┘
+```text
+Vue 3 -> FastAPI -> Redis Streams -> Plan Worker -> LangGraph
+             |                              |
+             +-> PostgreSQL/PostGIS         +-> DeepSeek / Tool adapters
+             +-> Prometheus -> Tempo -> Grafana
 ```
 
----
+## 本地启动
 
-## 技术栈
+### 环境要求
 
-### 应用与 AI
+- Docker Desktop，且 `docker version` 能连接 Docker daemon
+- Node.js 22+，仅前端开发模式需要
+- PowerShell 7 或 Windows PowerShell 5.1
 
-| 层级 | 选型 | 说明 |
-|------|------|------|
-| 语言 | Python 3.12 | AI 编排与业务 API |
-| 同步 API | FastAPI | REST + SSE 流式进度 |
-| 工作流引擎 | LangGraph | StateGraph + 条件分支 + 节点级 Trace |
-| LLM 框架 | LangChain + langchain-openai | Structured Output |
-| LLM | DeepSeek-V3（经 LLM Gateway） | 主模型 + 降级备用模型 |
-| Embedding | BGE-small-zh-v1.5 + TEI 推理服务 | 独立部署，Worker 远程调用 |
-| 异步任务 | RocketMQ/Kafka + Plan Worker | LangGraph 长流程削峰 |
-| 前端 | Vue 3 (Vite + Composition API + Pinia) | |
-| 地图 | 高德地图 API | 路径规划 / DeepLink，带熔断与缓存 |
+### 1. 配置环境变量
 
-### 数据与中间件
-
-| 层级 | 选型 | 说明 |
-|------|------|------|
-| OLTP | PostgreSQL 16（主从） | 用户、路线、反馈、画像 |
-| 全文 / UGC 检索 | Elasticsearch 8.x | POI / 评论 / 摘要检索 |
-| 向量 | pgvector → Milvus | 早中期 pgvector，规模迁移 Milvus |
-| 缓存 | Redis Cluster | 会话、热点模板、限流、Embedding 缓存 |
-| 消息队列 | RocketMQ / Kafka | 规划任务、反馈异步、模板入库 |
-| 对象存储 | OSS / S3 | 封面图、导出文件 |
-
-### 网关、治理与可观测
-
-| 层级 | 选型 | 说明 |
-|------|------|------|
-| API 网关 | APISIX / Kong | 鉴权 JWT、限流、路由 |
-| 熔断限流 | Sentinel | LLM / 高德 / ES 依赖保护 |
-| 配置中心 | Nacos / Apollo | Prompt、阈值、Feature Flag |
-| 指标 | Prometheus + Grafana | QPS、P99、Token、队列积压 |
-| 日志 | Loki / ELK | 结构化 JSON，含 trace_id / task_id |
-| 链路追踪 | OpenTelemetry + Jaeger | 网关 → API → MQ → Worker → LLM → DB |
-| 部署 | Docker + Kubernetes + ArgoCD | 多副本 HPA、蓝绿/金丝雀 |
-
----
-
-## 知识分层
-
-| 层级 | 内容 | 作用 |
-|------|------|------|
-| **L1 领域知识** | POI 库 + UGC 摘要库 | 稳定可 RAG，支撑选点依据 |
-| **L2 路线包** | RouteBundle（向量索引） | 线下预计算路线 + 分数；线上 HOT 检索 |
-| **L3 会话记忆** | 当次 GraphState + 用户反馈 | 动态调整与个性化微调 |
-
-检索顺序：**L1 定 POI 候选 → L2 定 RouteBundle 热路径 → L3 会话微调**
-
----
-
-## 核心规划流程
-
-> **Graph 节点、GraphState 字段、热/冷路径** 以 [`docs/graph-state-design.md`](docs/graph-state-design.md) 为准。
-
-### Plan Run 概要
-
-```
-constraint_extract → route_bundle_search
-    ├─ HOT  → light_validate → light_adapt → bundle_rerank → route_present (Top-K)
-    └─ COLD → poi_retrieve → route_generate → route_validate
-              → route_evaluate → route_present (Top-K) → 异步写入 RouteBundle
+```powershell
+Copy-Item .env.example .env
 ```
 
-**六段（冷路径）：** 约束提取 → POI 检索 → 多候选路线 → 校验 → 评估 → Top-K 输出。
+系统默认关闭 LLM，仍可通过规则与模板完成规划。启用 DeepSeek 时，在本地 `.env` 中设置：
 
-**原则：** 零澄清；模糊输入必出推荐；最耗时步骤通过 **线下 RouteBundle + 向量检索** 加速。
-
-### 生产请求链路
-
-```
-1. POST /api/v1/routes/plan
-   Gateway 鉴权限流 → Route API 校验 → 写 Redis task → 发 MQ
-   → 立即返回 { task_id, sse_url }（目标 P99 < 200ms）
-
-2. Plan Worker 消费 MQ，执行 LangGraph
-   → 阶段性结果写 Redis → SSE 推送进度
-
-3. GET /api/v1/routes/stream/{task_id}
-   SSE：extract → bundle_search → retrieve → generate → validate → evaluate → done
-
-4. POST /api/v1/routes/{route_id}/feedback
-   → 写 PG + 发 MQ → 异步更新模板评分 & 用户画像
+```dotenv
+LLM_ENABLED=true
+DEEPSEEK_API_KEY=replace-with-your-key
+LLM_MODEL=deepseek-v4-pro
+LLM_FAST_MODEL=deepseek-v4-flash
 ```
 
-### LangGraph 节点（摘要）
+不要提交 `.env` 或任何真实密钥。
 
-详见 [`docs/graph-state-design.md`](docs/graph-state-design.md)。MVP 先实现 **冷路径六段**，再接入 **RouteBundle 热路径**。
+POI 数据源通过统一 Provider 切换。在线演示使用高德 Web 服务，开发测试可使用本地 PostGIS 或固定 Mock 数据：
 
-```
-constraint_extract → poi_retrieve → route_generate (M条)
-  → route_validate → route_evaluate → route_present (Top-K)
-```
-
-**Replan**（后续）：`replan_parse → lock_stops → partial_retrieve → local_validate → render_diff`
-
-### 动态调整（Replan 模式）
-
-支持行程中增量修订，不重新跑全流程：
-
-- 输入：已确认站点、剩余时间、新约束（跳过 / 加站 / 迟到）
-- `GraphState.session_context` 保存会话进度
-- 触发 `replan` 分支：在剩余 POI 候选上局部重优化
-
----
-
-## 核心数据模型
-
-| 模型 | 说明 |
-|------|------|
-| `RouteIntent` | 出行目的 + `RouteConstraints` + `InferredPreferences` |
-| `RouteConstraints` | 时间 / 区域 / 预算 / 品类 / 排队容忍（null = 未指定） |
-| `PoiEntity` / `ScoredPoi` | POI 实体 + 多维综合评分 |
-| `RoutePlan` / `ItineraryStop` | 完整路线 + 每站时间 / 排队预估 / UGC 贴士 |
-| `RouteTemplate` | L2 模板（语义向量 + route_json + 质量指标） |
-| `RouteFeedback` | 用户评分 → 双写模板质量与用户画像 |
-| `GraphState` | LangGraph 节点间状态契约 |
-
----
-
-## 抽象接口与目录结构
-
-```
-backend/src/
-├── abstracts/
-│   ├── embedder.py           — 向量编码器
-│   ├── vector_store.py       — 向量存储
-│   ├── poi_repository.py     — POI 结构化 + 向量检索 + rank
-│   ├── ugc_repository.py     — UGC 评论/摘要检索（待实现）
-│   ├── user_profile_repo.py  — 用户画像读写（待实现）
-│   ├── template_repo.py      — 路线模板仓库
-│   └── llm_client.py         — LLM 调用（经 Gateway）
-├── graph/
-│   ├── state.py              — GraphState 契约
-│   ├── router.py             — StateGraph 组装
-│   └── nodes/                — 各节点实现
-├── models/                   — Pydantic 数据模型
-├── tools/                    — POI 搜索 / 距离估算 / 天气
-├── db/                       — PostgreSQL / Redis / Vector 实现
-└── main.py                   — FastAPI 入口
+```dotenv
+POI_PROVIDER=amap
+AMAP_API_KEY=replace-with-your-web-service-key
+AMAP_CITY=上海
+AMAP_POI_CACHE_TTL_SECONDS=900
 ```
 
----
+`amap` 请求失败、超时或限流时会依次降级到 PostGIS 和 fixture；相同检索计划会缓存在 Redis 中。需要完全离线且结果可复现时使用 `POI_PROVIDER=mock`。
 
-## 可靠性设计
+内部坐标统一使用 WGS-84（EPSG:4326）。约束解析会提取 `location_mentions`，地点解析按 `GazetteerGeoProvider -> AmapGeoProvider` 顺序执行：本地词典精确命中时直接返回，未命中才调用高德 place/geocode。高德边界负责 WGS-84 与 GCJ-02 双向转换，PostGIS、距离计算和路线生成始终只使用 WGS-84。
 
-### SLO 目标（示例）
+### 2. 一键启动
 
-| 接口 | 可用性 | 延迟 |
-|------|--------|------|
-| 提交规划任务 | 99.9% | P99 < 200ms |
-| SSE 首包 | 99.5% | < 1s |
-| 完整路线生成 | 99% | P95 < 8s（全量分支） |
-| POI 搜索 | 99.9% | P99 < 100ms |
-
-### 治理策略
-
-| 策略 | 说明 |
-|------|------|
-| 超时级联 | 每层明确 deadline；Graph 总超时 > 各节点之和 |
-| 熔断 | Sentinel 保护 LLM、高德、ES 依赖 |
-| 舱壁隔离 | 适配分支与全量分支 Worker 池分离 |
-| 幂等 | `Idempotency-Key` 防重复提交 |
-| 降级链 | LLM 超时 → 高匹配模板直出 → 规则 POI 组合 |
-| 模板质量门禁 | 异步入库前校验约束满足度与 POI 有效性 |
-| 健康检查 | K8s liveness/readiness + 依赖探测 |
-
-### LLM 调用策略
-
-```
-超时（适配 3s / 全量 8s）
-  → 重试 1 次
-  → 降级模型 / 模板直出
-  → 返回部分结果 + 稍后重试提示
+```powershell
+.\scripts\start-local.ps1 -Build
 ```
 
----
+使用 `postgis` 或需要为高德准备本地降级数据时，首次启动后导入仓库内的 POI fixture：
 
-## 可观测性
-
-**标准：OpenTelemetry，Metrics + Logs + Traces 三件套**
-
-LangGraph 节点级 Span 示例：
-
-```
-trace: plan_route
-├── span: intent_parse       (llm.latency, tokens)
-├── span: hybrid_retrieval   (poi.count, ugc.count, vector.latency)
-├── span: match_score
-├── span: full_generate
-│   ├── span: poi_retrieval
-│   ├── span: ugc_retrieval
-│   └── span: route_optimizer
-├── span: constraint_validator
-└── span: render_output
+```powershell
+docker compose exec api python scripts/import_poi_fixture.py
 ```
 
-日志必含字段：`trace_id`、`task_id`、`user_id`、`graph_node`、耗时、错误码。
+本地入口：
 
----
+| 服务 | 地址 |
+| --- | --- |
+| Web | <http://127.0.0.1:5173> |
+| API 文档 | <http://127.0.0.1:8080/docs> |
+| 健康检查 | <http://127.0.0.1:8080/api/v1/health> |
+| Grafana | <http://127.0.0.1:3000> |
+| Prometheus | <http://127.0.0.1:9090> |
 
-## 赛题能力映射
+停止服务但保留数据库数据：
 
-| 赛题要求 | 系统模块 | 生产要点 |
-|---------|---------|---------|
-| POI 数据 | POI Service + PG + ES | 双写/CDC、缓存、只读副本 |
-| UGC | UGC Repository + ES RAG | 索引分片、检索超时降级 |
-| 个性化 | User Profile Service | Redis 热读 + MQ 异步画像更新 |
-| 路线生成 | Plan Worker + LangGraph + Optimizer | 队列削峰、LLM 降级 |
-| 动态调整 | Replan API + session_context | Redis 会话状态、局部重算 |
-| 多条件权衡 | Constraint Validator + 多方案输出 | Plan A / Plan B 显式 trade-off |
+```powershell
+.\scripts\stop-local.cmd
+```
 
----
+也可以只启动 Docker 服务，不启动 Vite 前端：
 
-## 演进路线
+```powershell
+docker compose up -d --build
+docker compose ps
+```
 
-| 阶段 | 目标 | 范围 |
-|------|------|------|
-| **P0 可演示** | 赛题功能闭环 | 单体 FastAPI + LangGraph + PG + Redis + 基础日志 |
-| **P1 可上线** | 异步化 + 基础监控 | + MQ + Worker + Prometheus + OTel + 网关限流 |
-| **P2 可扩容** | 检索与 AI 分离 | + ES + UGC RAG + Embedding 服务 + LLM Gateway + 读写分离 |
-| **P3 生产级** | 高可用 + 全链路 | + K8s 多 AZ + Sentinel + Jaeger + 降级体系 + 压测基线 |
+随后在另一个终端启动前端：
 
-代码结构按 P3 边界组织（包名、接口），部署按阶段渐进，避免过早微服务拆分。
+```powershell
+Set-Location frontend
+npm.cmd ci
+npm.cmd run dev
+```
 
----
+## 单机服务器部署
 
-## 执行计划
+当前仓库提供两种 Docker Compose 单机部署：
 
-| Step | 内容 | 状态 |
-|------|------|------|
-| 1 | 抽象接口层（ABC 解耦） | ✅ |
-| 2 | 数据模型（RouteIntent / RoutePlan / RouteTemplate 等） | ✅ |
-| 3 | LangGraph 节点实现（含 Optimizer / Validator / UGC 检索） | 进行中 |
-| 4 | DB / 基础设施（PG + pgvector + Redis + ES） | 待开始 |
-| 5 | 异步任务链路（MQ + Worker + SSE） | 待开始 |
-| 6 | FastAPI 路由 + LLM Gateway | 待开始 |
-| 7 | Vue 3 前端 + 高德地图 | 待开始 |
-| 8 | 可观测接入（OTel + Prometheus + 结构化日志） | 待开始 |
-| 9 | 端到端测试（5 个真实场景 + 压测基线） | 待开始 |
+- `2 vCPU / 2 GB RAM / 40 GB`：个人演示配置，只运行前端、Caddy、API、单Worker、PostGIS和Redis；服务器必须配置4GB Swap。
+- `4 vCPU / 8 GB RAM / 60 GB`：完整配置，额外长期运行Prometheus、OpenTelemetry、Tempo和Grafana。
 
----
+### 1. 准备服务器
 
-## API 端点（规划）
+在 Ubuntu 22.04/24.04 上安装 Git、Docker Engine 和 Docker Compose Plugin，然后拉取项目：
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/v1/routes/plan` | 提交规划任务，返回 task_id |
-| GET | `/api/v1/routes/stream/{task_id}` | SSE 流式进度与结果 |
-| GET | `/api/v1/routes/{route_id}` | 查询历史路线 |
-| POST | `/api/v1/routes/{route_id}/feedback` | 提交反馈（异步处理） |
-| POST | `/api/v1/routes/{route_id}/replan` | 行程中动态调整 |
-| GET | `/api/v1/poi/search` | POI 直搜（不生成路线） |
-| GET | `/api/v1/health` | 健康检查 |
+```bash
+git clone <your-repository-url> /opt/gentrip
+cd /opt/gentrip
+cp .env.example .env
+```
+
+修改 `.env`，至少替换以下配置：
+
+```dotenv
+POSTGRES_PASSWORD=replace-with-a-strong-password
+AUTH_JWT_SECRET=replace-with-at-least-32-random-characters
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=replace-with-a-strong-password
+
+# 首次启动设为 true；注册首个 owner 后立即改回 false。
+PRODUCTION_ALLOW_REGISTRATION=true
+
+# 免费域名示例：公网 IP 为 203.0.113.10
+APP_DOMAIN=gentrip.203-0-113-10.sslip.io
+
+LLM_ENABLED=true
+DEEPSEEK_API_KEY=replace-with-your-key
+```
+
+`sslip.io` 会从域名中的数字解析公网 IP，无需注册账号。正式部署前确认云防火墙已开放 TCP `80/443`；Caddy 会自动申请并续期 HTTPS 证书。
+
+如果服务器只有2GB内存，先配置4GB Swap：
+
+```bash
+sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+### 2. 启动个人演示服务（2核2GB）
+
+```bash
+bash scripts/deploy-demo.sh
+```
+
+该脚本只启动 `postgres redis api worker frontend`，限制容器内存和规划并发，并幂等导入POI fixture。它不会启动完整观测栈。
+
+### 3. 启动完整服务（4核8GB及以上）
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.production.yml config --quiet
+docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.production.yml ps
+```
+
+前端会在 Docker 构建阶段完成编译，并由 Caddy 提供静态文件、`/api` 反向代理和 SSE 转发。首次启动后导入 POI fixture：
+
+```bash
+docker compose exec api python scripts/import_poi_fixture.py
+```
+
+访问 `https://<APP_DOMAIN>` 注册第一个 owner。注册成功后将 `.env` 中的 `PRODUCTION_ALLOW_REGISTRATION` 改为 `false`，再应用配置：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build
+```
+
+宿主机上的 PostgreSQL、Redis、API、Prometheus、Tempo 和 Grafana 默认只绑定 `127.0.0.1`。公网防火墙只开放 `22`、`80` 和 `443`。
+
+### 4. 验证部署
+
+```bash
+curl -fsS https://<APP_DOMAIN>/healthz
+curl -fsS https://<APP_DOMAIN>/api/v1/health
+docker compose -f docker-compose.yml -f docker-compose.production.yml ps
+docker compose -f docker-compose.yml -f docker-compose.production.yml logs --tail=100 frontend api worker
+```
+
+健康检查应返回 `status=ok`，并确认 PostgreSQL 与 Redis 可用。还应在浏览器完成一次路线规划，验证 SSE 阶段事件和最终路线均能返回。
+
+## 更新与备份
+
+个人演示配置更新：
+
+```bash
+cd /opt/gentrip
+git pull --ff-only
+bash scripts/deploy-demo.sh
+```
+
+完整配置更新：
+
+```bash
+cd /opt/gentrip
+git pull --ff-only
+docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build
+```
+
+查看日志：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.production.yml logs -f frontend api worker
+```
+
+停止服务但保留数据卷：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.production.yml down
+```
+
+生产环境需要定期备份 PostgreSQL，并保留 Docker volumes 和受限权限的 `.env` 安全副本。不要执行 `docker compose down -v`，除非明确需要删除全部持久化数据。
+
+## 更多文档
+
+- [完整启动与部署说明](docs/startup-and-deployment.md)
+- [Agent Runtime 设计](docs/agent-runtime-design.md)
+- [运行时运维说明](docs/runtime-operations.md)
+- [Golden Set 与质量评测](docs/golden-set.md)

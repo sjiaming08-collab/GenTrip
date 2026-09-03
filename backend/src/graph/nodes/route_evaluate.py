@@ -1,5 +1,8 @@
 """[5] route_evaluate — 对合法路线打分排序。"""
 
+import re
+
+from ...config import settings
 from ...llm.route_evaluate import llm_score_routes_with_meta
 from ...models.route import RoutePlan, ScoredRoute
 from ..state import GraphState, llm_call_from_meta, phase_update
@@ -26,6 +29,39 @@ def _domain_coverage(route: RoutePlan, constraints: dict, state: GraphState) -> 
     return len((covered - {""}) & requested) / len(requested)
 
 
+def _skeleton_coverage(route: RoutePlan, state: GraphState) -> float:
+    skeletons = (state.get("route_generation_meta") or {}).get("skeletons") or []
+    if not skeletons:
+        return 1.0
+    explicit = [
+        skeleton for skeleton in skeletons
+        if any(slot.get("categories") for slot in skeleton)
+    ]
+    candidates = explicit or skeletons
+    poi_domains = {
+        str(poi.get("poi_id")): str(poi.get("dimension") or "")
+        for poi in state.get("candidate_pois") or []
+    }
+
+    def score(skeleton: list[dict]) -> float:
+        unused = set(range(len(route.stops)))
+        matched = 0
+        for slot in skeleton:
+            categories = {str(item) for item in slot.get("categories") or []}
+            domain = str(slot.get("domain") or "")
+            found = next((
+                index for index in unused
+                if (not domain or poi_domains.get(route.stops[index].poi_id) == domain)
+                and (not categories or route.stops[index].category in categories)
+            ), None)
+            if found is not None:
+                unused.remove(found)
+                matched += 1
+        return matched / max(len(skeleton), 1)
+
+    return max(score(skeleton) for skeleton in candidates)
+
+
 def _rule_scores(route: RoutePlan, constraints: dict, state: GraphState) -> tuple[float, float, float]:
     budget = int(constraints["budget_per_person"])
     budget_gap = max(0, route.estimated_cost_per_person - budget)
@@ -46,6 +82,29 @@ def _rule_scores(route: RoutePlan, constraints: dict, state: GraphState) -> tupl
 
     preferred = constraints.get("preferred_cuisines") or []
     domain_coverage = _domain_coverage(route, constraints, state)
+    skeletons = (state.get("route_generation_meta") or {}).get("skeletons") or []
+    explicit_skeletons = [
+        skeleton for skeleton in skeletons
+        if any(slot.get("categories") for slot in skeleton)
+    ]
+    generation_meta = state.get("route_generation_meta") or {}
+    generated_target = int(
+        generation_meta.get("target_stop_count")
+        or max((len(skeleton) for skeleton in skeletons), default=1)
+    )
+    query = str(constraints.get("raw_query") or state.get("user_query") or "")
+    count_is_explicit = bool(re.search(
+        r"(?:\d{1,2}|[一二两三四五六七八九十]+)\s*个?\s*(?:活动|地点|景点|去处|项目|站)",
+        query,
+    ))
+    if count_is_explicit:
+        target_stops = max(1, int(constraints.get("poi_count") or generated_target))
+    elif explicit_skeletons:
+        target_stops = max(len(skeleton) for skeleton in explicit_skeletons)
+    else:
+        target_stops = generated_target
+    stop_coverage = min(len(route.stops) / target_stops, 1.0)
+    skeleton_coverage = _skeleton_coverage(route, state)
     if preferred:
         matched_preferences = sum(
             1
@@ -53,9 +112,9 @@ def _rule_scores(route: RoutePlan, constraints: dict, state: GraphState) -> tupl
             if any(term in stop.category or term in stop.poi_name for stop in route.stops)
         )
         cuisine_coverage = matched_preferences / len(preferred)
-        preference = 0.35 + 0.35 * cuisine_coverage + 0.30 * domain_coverage
+        preference = 0.05 + 0.10 * cuisine_coverage + 0.10 * domain_coverage + 0.15 * stop_coverage + 0.60 * skeleton_coverage
     else:
-        preference = 0.65 + 0.35 * domain_coverage
+        preference = 0.10 + 0.25 * domain_coverage + 0.45 * stop_coverage + 0.20 * skeleton_coverage
 
     return round(execution, 3), round(quality, 3), round(min(preference, 1.0), 3)
 
@@ -65,16 +124,24 @@ async def route_evaluate(state: GraphState) -> dict:
     assert constraints is not None
 
     routes = [RoutePlan.model_validate(raw) for raw in state["valid_routes"]]
-    llm_scores, llm_meta = await llm_score_routes_with_meta(
-        routes,
-        constraints=constraints,
-        user_query=state["user_query"],
-        memory_context=state.get("memory_context"),
-    )
+    if settings.route_evaluate_mode != "rule_only":
+        llm_scores, llm_meta = await llm_score_routes_with_meta(
+            routes,
+            constraints=constraints,
+            user_query=state["user_query"],
+            memory_context=state.get("memory_context"),
+        )
+    else:
+        llm_scores = {}
+        llm_meta = {
+            "operation": "route_evaluate",
+            "status": "skipped",
+            "skip_reason": "rule_only_mode",
+        }
     llm_call = llm_call_from_meta(
         "route_evaluate",
         llm_meta,
-        fallback_used=bool(llm_meta.get("fallback_used")) or not bool(llm_scores),
+        fallback_used=bool(llm_meta.get("fallback_used")),
     )
 
     scored: list[ScoredRoute] = []

@@ -37,8 +37,31 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_base_url: str = "https://api.deepseek.com/v1"
     llm_model: str = "deepseek-v4-pro"
+    llm_fast_model: str = "deepseek-v4-flash"
     llm_timeout_sec: float = 30.0
+    llm_fast_timeout_sec: float = 12.0
+    llm_route_evaluate_timeout_sec: float = 15.0
+    llm_max_retries: int = 2
+    llm_retry_base_seconds: float = 0.25
+    llm_circuit_failure_threshold: int = 5
+    llm_circuit_open_seconds: float = 30.0
+    llm_disable_thinking: bool = True
     constraint_extract_mode: Literal["rule_only", "llm_with_fallback", "llm_only"] = "llm_with_fallback"
+    constraint_compiler_enabled: bool = True
+    blueprint_feasibility_enabled: bool = True
+    joint_route_solver_enabled: bool = True
+    failure_directed_repair_enabled: bool = True
+    planner_blueprint_enabled: bool = False
+    turn_router_v2_enabled: bool = True
+    poi_slot_parallel_enabled: bool = True
+    poi_slot_concurrency: int = 2
+    poi_queries_per_slot: int = 4
+    poi_queries_per_run: int = 16
+    activity_blueprint_mode: Literal["rule_only", "llm_with_fallback", "llm_only"] = "llm_with_fallback"
+    activity_blueprint_count: int = 2
+    route_evaluate_mode: Literal["rule_only", "rule_first", "llm_with_fallback"] = "llm_with_fallback"
+    route_evaluate_ambiguity_gap: float = 0.05
+    session_summary_mode: Literal["rule_only", "llm_sync", "async_llm"] = "async_llm"
 
     # Runtime state. Leave both URLs empty for isolated unit tests only.
     database_url: str = ""
@@ -61,16 +84,31 @@ class Settings(BaseSettings):
     runtime_execution_mode: Literal["inprocess", "redis_stream"] = "inprocess"
     runtime_queue_stream: str = "gentrip:plan-runs"
     runtime_queue_group: str = "gentrip-plan-workers"
-    runtime_queue_claim_idle_ms: int = 60000
+    runtime_queue_claim_idle_ms: int = 150000
+    runtime_queue_heartbeat_ms: int = 30000
     runtime_queue_max_attempts: int = 3
     runtime_queue_dead_letter_stream: str = "gentrip:plan-runs:dlq"
+    session_summary_queue_stream: str = "gentrip:session-summaries"
+    session_summary_queue_group: str = "gentrip-session-summary-workers"
     runtime_run_deadline_seconds: int = 120
     runtime_tenant_max_active_runs: int = 3
     otel_service_name: str = "gentrip-api"
     otel_exporter_otlp_traces_endpoint: str = ""
-    travel_time_provider: Literal["mock", "http"] = "mock"
+    travel_time_provider: Literal["mock", "http", "amap"] = "mock"
     travel_time_http_url: str = ""
     travel_time_timeout_sec: float = 2.0
+
+    # POI source. Amap is opt-in and falls back to local sources on errors.
+    poi_provider: Literal["mock", "postgis", "amap"] = "postgis"
+    amap_api_key: str = ""
+    amap_base_url: str = "https://restapi.amap.com"
+    amap_city: str = "上海"
+    amap_timeout_sec: float = 5.0
+    amap_poi_cache_ttl_seconds: int = 900
+    amap_poi_max_queries: int = 8
+    amap_min_request_interval_sec: float = 0.25
+    amap_max_retries: int = 2
+    amap_retry_base_seconds: float = 0.35
 
     # Friendly aliases for local .env files.
     deepseek_api_key: str = ""

@@ -137,6 +137,14 @@ def judge_route(
             violations.append(f"第 {stop.sequence} 站到达时间早于上一站出发加交通时间")
         previous_departure = departure
 
+        slot_window = stop.slot_time_window or {}
+        window_start = parse_hhmm(slot_window.get("start"))
+        window_end = parse_hhmm(slot_window.get("end"))
+        if window_start is not None and arrival < window_start:
+            violations.append(f"第 {stop.sequence} 站早于槽位时间窗开始")
+        if window_end is not None and departure > window_end:
+            violations.append(f"第 {stop.sequence} 站晚于槽位时间窗结束")
+
         open_result = is_open_during(poi_hours.get(stop.poi_id), arrival, departure, weekday=weekday)
         if open_result is False:
             violations.append(

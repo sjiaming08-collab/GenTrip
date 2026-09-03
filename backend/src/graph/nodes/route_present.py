@@ -8,6 +8,8 @@ from ...models.route import (
     RouteSource,
     ScoredRoute,
 )
+from ...models.diff import RoutePlanDiff
+from .render_diff import _build_changes
 from ..state import GraphState, llm_call_from_meta, phase_update
 
 TOP_K = 2
@@ -88,6 +90,35 @@ async def route_present(state: GraphState) -> dict:
     if presentation is None:
         presentation = _fallback_presentation(top[0], state)
         source = "template"
+
+    diff_result = None
+    is_broad_replan = (
+        state.get("turn_relation") == "modify_current"
+        and state.get("recompute_scope") in {"schedule_route", "global_rebuild"}
+        and bool(state.get("original_route"))
+    )
+    if is_broad_replan:
+        original = state.get("original_route") or {}
+        updated = results[0].route.model_dump(mode="json")
+        operation = state.get("replan_operation") or {
+            "type": state.get("recompute_scope") or "replan"
+        }
+        changes = _build_changes(
+            original.get("stops") or [], updated.get("stops") or [], operation
+        )
+        changed = [item for item in changes if item.type != "unchanged"]
+        summary = (
+            f"已按新约束重排路线，共调整 {len(changed)} 处"
+            if changed else "已按新约束重新校验路线"
+        )
+        diff_result = RoutePlanDiff(
+            original_plan_id=str(original.get("plan_id") or ""),
+            new_plan_id=str(updated.get("plan_id") or ""),
+            changes=changes,
+            summary=summary,
+        ).model_dump(mode="json")
+        presentation.title = "路线修订"
+        presentation.summary = summary
     llm_call = llm_call_from_meta(
         "route_present",
         llm_meta,
@@ -102,6 +133,8 @@ async def route_present(state: GraphState) -> dict:
         run_status="completed",
         planning_outcome="route_ready",
         constraints=state.get("original_constraints") or state.get("constraints"),
+        reply_type="diff" if is_broad_replan else state.get("reply_type"),
+        diff_result=diff_result,
         llm_calls=[llm_call],
     )
     update["phase_log"][0].update({

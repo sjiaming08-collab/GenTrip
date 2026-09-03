@@ -24,6 +24,38 @@ class TenantRunCapacityExceeded(RuntimeError):
     """Raised when a tenant has reached its durable active-run budget."""
 
 
+class RunIdempotencyConflict(RuntimeError):
+    """Raised when a tenant has already accepted the same request key."""
+
+    def __init__(self, run_id: str, session_id: str) -> None:
+        super().__init__(run_id)
+        self.run_id = run_id
+        self.session_id = session_id
+
+
+class InvalidRunStatusTransition(RuntimeError):
+    """Raised when a stale worker attempts to overwrite a terminal run."""
+
+
+RUN_STATUS_TRANSITIONS: dict[str, set[str]] = {
+    "queued": {"running", "failed", "cancelled", "interrupted"},
+    "running": {"completed", "degraded", "failed", "cancelled", "timed_out", "interrupted"},
+    "failed": {"running"},
+    "completed": set(),
+    "degraded": set(),
+    "cancelled": set(),
+    "timed_out": set(),
+    "interrupted": {"running"},
+}
+
+
+def _assert_run_status_transition(current: str, target: str) -> None:
+    if current == target:
+        return
+    if target not in RUN_STATUS_TRANSITIONS.get(current, set()):
+        raise InvalidRunStatusTransition(f"{current}->{target}")
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -71,7 +103,7 @@ class RuntimeStore(Protocol):
     async def revoke_auth_session(self, session_id: str, user_id: str, reason: str) -> bool: ...
     async def revoke_other_auth_sessions(self, user_id: str, current_session_id: str) -> int: ...
     async def create_run(self, run_id: str, tenant_id: str, session_id: str, request: dict[str, Any]) -> list[str]: ...
-    async def find_run_by_idempotency(self, tenant_id: str, session_id: str, idempotency_key: str) -> dict[str, Any] | None: ...
+    async def find_run_by_idempotency(self, tenant_id: str, idempotency_key: str, session_id: str | None = None) -> dict[str, Any] | None: ...
     async def release_run_idempotency(self, tenant_id: str, run_id: str) -> None: ...
     async def set_run_status(
         self,
@@ -84,6 +116,7 @@ class RuntimeStore(Protocol):
     ) -> None: ...
     async def get_run(self, tenant_id: str, run_id: str) -> dict[str, Any] | None: ...
     async def save_run_checkpoint(self, tenant_id: str, run_id: str, phase: str, phase_index: int, state: dict[str, Any]) -> None: ...
+    async def get_latest_run_checkpoint(self, tenant_id: str, run_id: str) -> dict[str, Any] | None: ...
     async def list_run_checkpoints(self, tenant_id: str, run_id: str) -> list[dict[str, Any]]: ...
     async def append_event(self, tenant_id: str, run_id: str, event: dict[str, Any]) -> dict[str, Any]: ...
     async def get_events_after(self, tenant_id: str, run_id: str, event_id: int) -> list[dict[str, Any]]: ...
@@ -331,6 +364,18 @@ class MemoryRuntimeStore:
             session_id, tenant_id = tenant_id, DEFAULT_TENANT_ID
         assert isinstance(session_id, str)
         async with self._lock:
+            idempotency_key = request.get("idempotency_key")
+            if idempotency_key:
+                existing = next(
+                    (
+                        item for item in self.runs.values()
+                        if item["tenant_id"] == tenant_id
+                        and item["request"].get("idempotency_key") == idempotency_key
+                    ),
+                    None,
+                )
+                if existing:
+                    raise RunIdempotencyConflict(existing["run_id"], existing["session_id"])
             active_runs = [
                 item for item in self.runs.values()
                 if item["tenant_id"] == tenant_id and item["status"] in {"queued", "running"}
@@ -360,9 +405,13 @@ class MemoryRuntimeStore:
             }
             return cancelled
 
-    async def find_run_by_idempotency(self, tenant_id: str, session_id: str, idempotency_key: str) -> dict[str, Any] | None:
+    async def find_run_by_idempotency(self, tenant_id: str, idempotency_key: str, session_id: str | None = None) -> dict[str, Any] | None:
         for run in self.runs.values():
-            if run["tenant_id"] == tenant_id and run["session_id"] == session_id and run["request"].get("idempotency_key") == idempotency_key:
+            if (
+                run["tenant_id"] == tenant_id
+                and run["request"].get("idempotency_key") == idempotency_key
+                and (session_id is None or run["session_id"] == session_id)
+            ):
                 return dict(run)
         return None
 
@@ -373,15 +422,22 @@ class MemoryRuntimeStore:
             self.runs[run_id]["request"]["idempotency_key"] = None
 
     async def set_run_status(self, run_id: str, status: str, **updates: Any) -> None:
-        run = self.runs[run_id]
-        run["status"] = status
-        if status == "running" and not run["started_at"]:
-            run["started_at"] = _utc_now()
-        if status in {"completed", "failed", "cancelled", "degraded", "timed_out"}:
-            run["completed_at"] = _utc_now()
-        for key in ("result", "token_usage", "error_code"):
-            if key in updates and updates[key] is not None:
-                run[key] = updates[key]
+        async with self._lock:
+            run = self.runs[run_id]
+            _assert_run_status_transition(str(run["status"]), status)
+            run["status"] = status
+            if status == "running":
+                if not run["started_at"]:
+                    run["started_at"] = _utc_now()
+                run["completed_at"] = None
+                run["error_code"] = None
+                run["result"] = None
+                run["token_usage"] = {}
+            if status in {"completed", "failed", "cancelled", "degraded", "timed_out", "interrupted"}:
+                run["completed_at"] = _utc_now()
+            for key in ("result", "token_usage", "error_code"):
+                if key in updates and updates[key] is not None:
+                    run[key] = updates[key]
 
     async def get_run(self, tenant_id: str, run_id: str | None = None) -> dict[str, Any] | None:
         if run_id is None:
@@ -405,6 +461,12 @@ class MemoryRuntimeStore:
         if await self.get_run(tenant_id, run_id) is None:
             return []
         return [dict(item) for item in self.run_checkpoints.get(run_id, [])]
+
+    async def get_latest_run_checkpoint(self, tenant_id: str, run_id: str) -> dict[str, Any] | None:
+        checkpoints = await self.list_run_checkpoints(tenant_id, run_id)
+        if not checkpoints:
+            return None
+        return dict(max(checkpoints, key=lambda item: int(item["phase_index"])))
 
     async def append_event(self, tenant_id: str, run_id: str, event: dict[str, Any]) -> dict[str, Any]:
         if await self.get_run(tenant_id, run_id) is None:
@@ -433,6 +495,10 @@ class MemoryRuntimeStore:
         runs: dict[tuple[str, str], int] = {}
         duration_seconds: dict[str, float] = {}
         tokens = {"prompt": 0, "completion": 0, "total": 0}
+        llm_calls: dict[tuple[str, str, str], int] = {}
+        tool_calls: dict[tuple[str, str], int] = {}
+        phases: dict[tuple[str, str], int] = {}
+        bundle_search: dict[str, int] = {}
         for run in self.runs.values():
             status = str(run["status"])
             result = run.get("result") or {}
@@ -444,7 +510,33 @@ class MemoryRuntimeStore:
                 duration_seconds[status] = duration_seconds.get(status, 0.0) + max(0.0, (completed - started).total_seconds())
             for key, metric in (("prompt_tokens", "prompt"), ("completion_tokens", "completion"), ("total_tokens", "total")):
                 tokens[metric] += int((run.get("token_usage") or {}).get(key) or 0)
-        return {"runs": runs, "duration_seconds": duration_seconds, "token_usage": tokens}
+            if not isinstance(result, dict):
+                continue
+            for call in result.get("llm_calls") or []:
+                key = (
+                    str(call.get("operation") or "unknown"),
+                    str(call.get("status") or "unknown"),
+                    str(call.get("error_code") or "none"),
+                )
+                llm_calls[key] = llm_calls.get(key, 0) + 1
+            for call in result.get("tool_calls") or []:
+                key = (str(call.get("operation") or "unknown"), str(call.get("status") or "unknown"))
+                tool_calls[key] = tool_calls.get(key, 0) + 1
+                if call.get("operation") == "route_bundle_search":
+                    outcome = "hit" if call.get("cache_hit") else "miss"
+                    bundle_search[outcome] = bundle_search.get(outcome, 0) + 1
+            for phase in result.get("phase_log") or []:
+                key = (str(phase.get("phase") or "unknown"), str(phase.get("status") or "unknown"))
+                phases[key] = phases.get(key, 0) + 1
+        return {
+            "runs": runs,
+            "duration_seconds": duration_seconds,
+            "token_usage": tokens,
+            "llm_calls": llm_calls,
+            "tool_calls": tool_calls,
+            "phases": phases,
+            "bundle_search": bundle_search,
+        }
 
 
 class PostgresRuntimeStore:
@@ -839,6 +931,19 @@ class PostgresRuntimeStore:
         await self.initialize()
         async with self._pool.acquire() as conn:
             async with conn.transaction():
+                idempotency_key = request.get("idempotency_key")
+                if idempotency_key:
+                    await conn.execute(
+                        "SELECT pg_advisory_xact_lock(hashtext($1))",
+                        f"{tenant_id}:idempotency:{idempotency_key}",
+                    )
+                    existing = await conn.fetchrow(
+                        "SELECT run_id::text, session_id FROM runs WHERE tenant_id = $1 AND idempotency_key = $2",
+                        tenant_id,
+                        idempotency_key,
+                    )
+                    if existing:
+                        raise RunIdempotencyConflict(existing["run_id"], existing["session_id"])
                 await conn.execute("SELECT pg_advisory_xact_lock(hashtext($1))", f"{tenant_id}:{session_id}")
                 capacity = await conn.fetchval(
                     """
@@ -880,15 +985,22 @@ class PostgresRuntimeStore:
                 )
         return [row["run_id"] for row in rows]
 
-    async def find_run_by_idempotency(self, tenant_id: str, session_id: str, idempotency_key: str) -> dict[str, Any] | None:
+    async def find_run_by_idempotency(self, tenant_id: str, idempotency_key: str, session_id: str | None = None) -> dict[str, Any] | None:
         await self.initialize()
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT * FROM runs WHERE tenant_id = $1 AND session_id = $2 AND idempotency_key = $3",
-                tenant_id,
-                session_id,
-                idempotency_key,
-            )
+            if session_id is None:
+                row = await conn.fetchrow(
+                    "SELECT * FROM runs WHERE tenant_id = $1 AND idempotency_key = $2",
+                    tenant_id,
+                    idempotency_key,
+                )
+            else:
+                row = await conn.fetchrow(
+                    "SELECT * FROM runs WHERE tenant_id = $1 AND session_id = $2 AND idempotency_key = $3",
+                    tenant_id,
+                    session_id,
+                    idempotency_key,
+                )
         return dict(row) if row else None
 
     async def release_run_idempotency(self, tenant_id: str, run_id: str) -> None:
@@ -906,22 +1018,34 @@ class PostgresRuntimeStore:
         usage = updates.get("token_usage")
         error_code = updates.get("error_code")
         async with self._pool.acquire() as conn:
-            await conn.execute(
-                """
-                UPDATE runs SET status = $2,
-                    result = COALESCE($3::jsonb, result),
-                    token_usage = COALESCE($4::jsonb, token_usage),
-                    error_code = COALESCE($5, error_code),
-                    started_at = CASE WHEN $2 = 'running' AND started_at IS NULL THEN NOW() ELSE started_at END,
-                    completed_at = CASE WHEN $2 IN ('completed', 'failed', 'cancelled', 'degraded', 'timed_out') THEN NOW() ELSE completed_at END
-                WHERE run_id = $1::uuid
-                """,
-                run_id,
-                status,
-                result,
-                usage,
-                error_code,
-            )
+            async with conn.transaction():
+                current = await conn.fetchval(
+                    "SELECT status FROM runs WHERE run_id = $1::uuid FOR UPDATE",
+                    run_id,
+                )
+                if current is None:
+                    raise KeyError(run_id)
+                _assert_run_status_transition(str(current), status)
+                await conn.execute(
+                    """
+                    UPDATE runs SET status = $2,
+                        result = CASE WHEN $2 = 'running' THEN NULL ELSE COALESCE($3::jsonb, result) END,
+                        token_usage = CASE WHEN $2 = 'running' THEN '{}'::jsonb ELSE COALESCE($4::jsonb, token_usage) END,
+                        error_code = CASE WHEN $2 = 'running' THEN NULL ELSE COALESCE($5, error_code) END,
+                        started_at = CASE WHEN $2 = 'running' AND started_at IS NULL THEN NOW() ELSE started_at END,
+                        completed_at = CASE
+                            WHEN $2 = 'running' THEN NULL
+                            WHEN $2 IN ('completed', 'failed', 'cancelled', 'degraded', 'timed_out', 'interrupted') THEN NOW()
+                            ELSE completed_at
+                        END
+                    WHERE run_id = $1::uuid
+                    """,
+                    run_id,
+                    status,
+                    result,
+                    usage,
+                    error_code,
+                )
 
     async def get_run(self, tenant_id: str, run_id: str) -> dict[str, Any] | None:
         await self.initialize()
@@ -967,6 +1091,21 @@ class PostgresRuntimeStore:
                 tenant_id, run_id,
             )
         return [{**dict(row), "state": _json_object(row["state"])} for row in rows]
+
+    async def get_latest_run_checkpoint(self, tenant_id: str, run_id: str) -> dict[str, Any] | None:
+        await self.initialize()
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT phase, phase_index, state, created_at
+                FROM run_checkpoints
+                WHERE tenant_id = $1 AND run_id = $2::uuid
+                ORDER BY phase_index DESC
+                LIMIT 1
+                """,
+                tenant_id, run_id,
+            )
+        return {**dict(row), "state": _json_object(row["state"])} if row else None
 
     async def append_event(self, tenant_id: str, run_id: str, event: dict[str, Any]) -> dict[str, Any]:
         await self.initialize()
@@ -1044,10 +1183,66 @@ class PostgresRuntimeStore:
                 FROM runs
                 """
             )
+            llm_rows = await conn.fetch(
+                """
+                SELECT COALESCE(call->>'operation', 'unknown') AS operation,
+                       COALESCE(call->>'status', 'unknown') AS status,
+                       COALESCE(NULLIF(call->>'error_code', ''), 'none') AS error_code,
+                       count(*) AS count
+                FROM runs
+                CROSS JOIN LATERAL jsonb_array_elements(
+                    CASE WHEN jsonb_typeof(result->'llm_calls') = 'array' THEN result->'llm_calls' ELSE '[]'::jsonb END
+                ) AS call
+                GROUP BY 1, 2, 3
+                """
+            )
+            tool_rows = await conn.fetch(
+                """
+                SELECT COALESCE(call->>'operation', 'unknown') AS operation,
+                       COALESCE(call->>'status', 'unknown') AS status,
+                       count(*) AS count
+                FROM runs
+                CROSS JOIN LATERAL jsonb_array_elements(
+                    CASE WHEN jsonb_typeof(result->'tool_calls') = 'array' THEN result->'tool_calls' ELSE '[]'::jsonb END
+                ) AS call
+                GROUP BY 1, 2
+                """
+            )
+            phase_rows = await conn.fetch(
+                """
+                SELECT COALESCE(entry->>'phase', 'unknown') AS phase,
+                       COALESCE(entry->>'status', 'unknown') AS status,
+                       count(*) AS count
+                FROM runs
+                CROSS JOIN LATERAL jsonb_array_elements(
+                    CASE WHEN jsonb_typeof(result->'phase_log') = 'array' THEN result->'phase_log' ELSE '[]'::jsonb END
+                ) AS entry
+                GROUP BY 1, 2
+                """
+            )
+            bundle_rows = await conn.fetch(
+                """
+                SELECT CASE WHEN call->>'cache_hit' = 'true' THEN 'hit' ELSE 'miss' END AS outcome,
+                       count(*) AS count
+                FROM runs
+                CROSS JOIN LATERAL jsonb_array_elements(
+                    CASE WHEN jsonb_typeof(result->'tool_calls') = 'array' THEN result->'tool_calls' ELSE '[]'::jsonb END
+                ) AS call
+                WHERE call->>'operation' = 'route_bundle_search'
+                GROUP BY 1
+                """
+            )
         return {
             "runs": {(str(row["status"]), str(row["path"])): int(row["count"]) for row in run_rows},
             "duration_seconds": {str(row["status"]): float(row["duration_seconds"]) for row in run_rows},
             "token_usage": {key: int(token_row[key]) for key in ("prompt", "completion", "total")},
+            "llm_calls": {
+                (str(row["operation"]), str(row["status"]), str(row["error_code"])): int(row["count"])
+                for row in llm_rows
+            },
+            "tool_calls": {(str(row["operation"]), str(row["status"])): int(row["count"]) for row in tool_rows},
+            "phases": {(str(row["phase"]), str(row["status"])): int(row["count"]) for row in phase_rows},
+            "bundle_search": {str(row["outcome"]): int(row["count"]) for row in bundle_rows},
         }
 
 

@@ -26,6 +26,7 @@ class Turn(BaseModel):
     route_results: list[dict[str, Any]] = Field(default_factory=list)
     assumptions: list[dict[str, Any]] = Field(default_factory=list)
     presentation: dict[str, Any] | None = None
+    diff_result: dict[str, Any] | None = None
     assistant_message: str = ""
     ts: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -49,6 +50,7 @@ class SessionState(BaseModel):
     overridden_slots: list[str] = Field(default_factory=list)
     route_feedback: list[dict[str, Any]] = Field(default_factory=list)
     dialog_summary: str = ""
+    dialog_summary_turn_id: str | None = None
     recent_turns: list[Turn] = Field(default_factory=list)
     memory_facts: list[dict[str, Any]] = Field(default_factory=list)
     latest_response: dict[str, Any] | None = None

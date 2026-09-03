@@ -1,0 +1,10 @@
+services:
+  api:
+    environment:
+      AUTH_ENABLED: "false"
+      ALLOW_INSECURE_TENANT_ID: "true"
+
+  worker:
+    environment:
+      AUTH_ENABLED: "false"
+      ALLOW_INSECURE_TENANT_ID: "true"

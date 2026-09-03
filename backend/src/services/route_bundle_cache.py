@@ -9,6 +9,7 @@ runs for the current request.
 from __future__ import annotations
 
 import json
+import re
 import time
 from hashlib import sha256
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ from typing import Any
 from uuid import uuid4
 
 from .cache_service import TTLCache
+from .poi_query_parser import parse_retrieval_plan
 from ..config import settings
 
 
@@ -48,11 +50,36 @@ class RouteBundleCache:
         self._recent: dict[str, RouteBundle] = {}
 
     @staticmethod
+    def _requested_categories(constraints: dict[str, Any]) -> list[str]:
+        query = str(constraints.get("raw_query") or "")
+        if not query:
+            return []
+        try:
+            plan = parse_retrieval_plan({"user_query": query, "constraints": constraints})
+        except (TypeError, ValueError):
+            return []
+        return sorted({
+            f"{spec.domain.value}:{category}"
+            for spec in plan.domains
+            for category in spec.categories or []
+        })
+
+    @staticmethod
+    def _requested_category_groups(constraints: dict[str, Any]) -> dict[str, set[str]]:
+        groups: dict[str, set[str]] = {}
+        for item in RouteBundleCache._requested_categories(constraints):
+            domain, category = item.split(":", 1)
+            groups.setdefault(domain, set()).add(category)
+        return groups
+
+    @staticmethod
     def signature(constraints: dict[str, Any]) -> str:
         payload = {
+            "city": constraints.get("city"),
             "district": constraints.get("district"),
             "domains": sorted(str(item) for item in constraints.get("domains") or []),
             "cuisines": sorted(str(item) for item in constraints.get("preferred_cuisines") or []),
+            "requested_categories": RouteBundleCache._requested_categories(constraints),
             "excluded": sorted(str(item) for item in constraints.get("excluded_categories") or []),
             "budget_band": int(constraints.get("budget_per_person") or 0) // 25,
             "time_band": int(constraints.get("time_budget_minutes") or 180) // 30,
@@ -60,24 +87,60 @@ class RouteBundleCache:
             "return_by": constraints.get("return_by"),
             "queue_tolerance_minutes": constraints.get("queue_tolerance_minutes"),
             "poi_count": constraints.get("poi_count"),
+            "anchor_count_explicit": constraints.get("anchor_count_explicit"),
+            "scene_type": constraints.get("scene_type"),
+            "pace": constraints.get("pace"),
+            "mobility_preferences": sorted(
+                str(item) for item in constraints.get("mobility_preferences") or []
+            ),
         }
         return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
     @staticmethod
     def _redis_key(signature: str) -> str:
         digest = sha256(signature.encode("utf-8")).hexdigest()
-        return f"gentrip:route-bundle:v1:{digest}"
+        return f"gentrip:route-bundle:v2:{digest}"
 
     @staticmethod
     def _redis_index_key() -> str:
-        return "gentrip:route-bundle:v1:index"
+        return "gentrip:route-bundle:v2:index"
+
+    @staticmethod
+    def _has_required_route_shape(bundle: RouteBundle, constraints: dict[str, Any]) -> bool:
+        query = str(constraints.get("raw_query") or "")
+        explicit_count = bool(re.search(
+            r"(?:\d{1,2}|[一二两三四五六七八九十]+)\s*个?\s*(?:活动|地点|景点|去处|项目|站)",
+            query,
+        ))
+        required_stops = max(1, int(constraints.get("poi_count") or 1)) if explicit_count or not query else 1
+        preferred = [str(item) for item in constraints.get("preferred_cuisines") or []]
+        requested_groups = RouteBundleCache._requested_category_groups(constraints)
+        for item in bundle.scored_routes:
+            stops = ((item.get("route") or {}).get("stops") or [])
+            if len(stops) < required_stops:
+                continue
+            if preferred and not any(
+                any(term in str(stop.get("category") or "") or term in str(stop.get("poi_name") or "") for term in preferred)
+                for stop in stops
+            ):
+                continue
+            actual_categories = {str(stop.get("category") or "") for stop in stops}
+            if any(
+                not actual_categories.intersection(categories)
+                for categories in requested_groups.values()
+            ):
+                continue
+            return True
+        return False
 
     @staticmethod
     def _normalized(constraints: dict[str, Any]) -> dict[str, Any]:
         return {
+            "city": constraints.get("city"),
             "district": constraints.get("district"),
             "domains": sorted(str(item) for item in constraints.get("domains") or []),
             "cuisines": sorted(str(item) for item in constraints.get("preferred_cuisines") or []),
+            "requested_categories": RouteBundleCache._requested_categories(constraints),
             "excluded": sorted(str(item) for item in constraints.get("excluded_categories") or []),
             "budget": int(constraints.get("budget_per_person") or 0),
             "time": int(constraints.get("time_budget_minutes") or 180),
@@ -100,10 +163,13 @@ class RouteBundleCache:
         left = cls._normalized(query)
         right = cls._normalized(candidate)
         if (
-            left["district"] != right["district"]
+            left["city"] != right["city"]
+            or left["district"] != right["district"]
             or left["domains"] != right["domains"]
             or left["cuisines"] != right["cuisines"]
+            or left["requested_categories"] != right["requested_categories"]
             or left["excluded"] != right["excluded"]
+            or left["poi_count"] != right["poi_count"]
         ):
             return 0.0
 
@@ -131,7 +197,11 @@ class RouteBundleCache:
                 self._recent.pop(signature, None)
                 continue
             score = self.similarity(constraints, bundle.constraints)
-            if score >= settings.route_bundle_min_match_score and (best is None or score > best.match_score):
+            if (
+                score >= settings.route_bundle_min_match_score
+                and self._has_required_route_shape(bundle, constraints)
+                and (best is None or score > best.match_score)
+            ):
                 best = RouteBundle(
                     bundle_id=bundle.bundle_id,
                     signature=bundle.signature,
@@ -146,7 +216,7 @@ class RouteBundleCache:
     async def get(self, constraints: dict[str, Any]) -> RouteBundle | None:
         signature = self.signature(constraints)
         local = self._cache.get(signature)
-        if local is not None:
+        if local is not None and self._has_required_route_shape(local, constraints):
             return local
         local_similar = self._similar_local(constraints)
         if local_similar is not None:
@@ -177,9 +247,10 @@ class RouteBundleCache:
                     created_at=float(payload.get("created_at") or time.time()),
                     source="redis",
                 )
-                self._cache.set(signature, bundle)
-                self._recent[signature] = bundle
-                return bundle
+                if self._has_required_route_shape(bundle, constraints):
+                    self._cache.set(signature, bundle)
+                    self._recent[signature] = bundle
+                    return bundle
 
             client = redis.from_url(
                 settings.redis_url,
@@ -212,6 +283,8 @@ class RouteBundleCache:
                     source="redis_similarity",
                     match_score=score,
                 )
+                if not self._has_required_route_shape(bundle, constraints):
+                    continue
                 best = bundle
             if best is not None:
                 self._recent[best.signature] = best

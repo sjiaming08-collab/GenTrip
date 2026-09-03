@@ -2,116 +2,1078 @@
   {
     "id": "xuhui_afternoon_exhibition_coffee",
     "query": "徐汇区下午两点出发，看展再喝咖啡，18点前回，人均150元",
-    "expect": {"district": "徐汇区", "budget_per_person": 150, "start_at": "14:00", "return_by": "18:00", "preferred_cuisines": ["咖啡"], "domains": ["dining", "sightseeing"]}
+    "expect": {
+      "district": "徐汇区",
+      "budget_per_person": 150,
+      "start_at": "14:00",
+      "return_by": "18:00",
+      "preferred_cuisines": [
+        "咖啡"
+      ],
+      "domains": [
+        "dining",
+        "sightseeing"
+      ]
+    }
   },
   {
     "id": "jingan_shopping_budget_duration",
     "query": "静安区周末购物，预算200元，3小时",
-    "expect": {"district": "静安区", "budget_per_person": 200, "time_budget_minutes": 180, "domains": ["shopping"]}
+    "expect": {
+      "district": "静安区",
+      "budget_per_person": 200,
+      "time_budget_minutes": 180,
+      "domains": [
+        "shopping"
+      ]
+    }
   },
   {
     "id": "huangpu_coffee_with_exclusions",
     "query": "黄浦区不要博物馆和公园，想喝咖啡，3小时",
-    "expect": {"district": "黄浦区", "time_budget_minutes": 180, "preferred_cuisines": ["咖啡"], "excluded_categories": ["博物馆", "公园"], "domains": ["dining"]}
+    "expect": {
+      "district": "黄浦区",
+      "time_budget_minutes": 180,
+      "preferred_cuisines": [
+        "咖啡"
+      ],
+      "excluded_categories": [
+        "博物馆",
+        "公园"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
   },
   {
     "id": "pudong_evening_hotpot_queue",
     "query": "浦东新区晚上6点吃火锅，预算150元，排队不超过30分钟，2小时",
-    "expect": {"district": "浦东新区", "budget_per_person": 150, "time_budget_minutes": 120, "start_at": "18:00", "queue_tolerance_minutes": 30, "preferred_cuisines": ["火锅"], "domains": ["dining"]}
+    "expect": {
+      "district": "浦东新区",
+      "budget_per_person": 150,
+      "time_budget_minutes": 120,
+      "start_at": "18:00",
+      "queue_tolerance_minutes": 30,
+      "preferred_cuisines": [
+        "火锅"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
   },
   {
     "id": "xuhui_afternoon_default_duration",
     "query": "徐汇区午后喝咖啡，预算80元",
-    "expect": {"district": "徐汇区", "budget_per_person": 80, "time_budget_minutes": 180, "start_at": "14:00", "preferred_cuisines": ["咖啡"], "domains": ["dining"]}
+    "expect": {
+      "district": "徐汇区",
+      "budget_per_person": 80,
+      "time_budget_minutes": 180,
+      "start_at": "14:00",
+      "preferred_cuisines": [
+        "咖啡"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
   },
   {
     "id": "jingan_no_queue_japanese",
     "query": "静安区不想排队，吃日料，人均120元",
-    "expect": {"district": "静安区", "budget_per_person": 120, "queue_tolerance_minutes": 0, "preferred_cuisines": ["日料"], "domains": ["dining"]}
+    "expect": {
+      "district": "静安区",
+      "budget_per_person": 120,
+      "queue_tolerance_minutes": 0,
+      "preferred_cuisines": [
+        "日料"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
   },
   {
     "id": "huangpu_exhibition_start_return",
     "query": "黄浦区逛展，下午三点出发，20点前回",
-    "expect": {"district": "黄浦区", "start_at": "15:00", "return_by": "20:00", "domains": ["sightseeing"]}
+    "expect": {
+      "district": "黄浦区",
+      "start_at": "15:00",
+      "return_by": "20:00",
+      "domains": [
+        "sightseeing"
+      ]
+    }
   },
   {
     "id": "pudong_sichuan_half_hour_queue",
     "query": "浦东新区想吃四川菜，排队半小时",
-    "expect": {"district": "浦东新区", "queue_tolerance_minutes": 30, "preferred_cuisines": ["川菜"], "domains": ["dining"]}
+    "expect": {
+      "district": "浦东新区",
+      "queue_tolerance_minutes": 30,
+      "preferred_cuisines": [
+        "川菜"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
   },
   {
     "id": "xuhui_two_stops",
     "query": "徐汇区安排两家咖啡馆，下午4点开始，预算100元",
-    "expect": {"district": "徐汇区", "budget_per_person": 100, "start_at": "16:00", "preferred_cuisines": ["咖啡"], "domains": ["dining"]}
+    "expect": {
+      "district": "徐汇区",
+      "budget_per_person": 100,
+      "start_at": "16:00",
+      "preferred_cuisines": [
+        "咖啡"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
   },
   {
     "id": "jingan_lunch_chinese_food",
     "query": "静安区中午12点出发吃本帮菜，预算180元",
-    "expect": {"district": "静安区", "budget_per_person": 180, "start_at": "12:00", "preferred_cuisines": ["本帮菜"], "domains": ["dining"]}
+    "expect": {
+      "district": "静安区",
+      "budget_per_person": 180,
+      "start_at": "12:00",
+      "preferred_cuisines": [
+        "本帮菜"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
   },
   {
     "id": "memory_inherits_route_constraints",
     "query": "再加一家甜品",
-    "memory": {"district": "徐汇区", "budget_per_person": 100, "time_budget_minutes": 180, "start_at": "14:00"},
-    "expect": {"district": "徐汇区", "budget_per_person": 100, "time_budget_minutes": 180, "start_at": "14:00", "preferred_cuisines": ["甜品"], "domains": ["dining"]}
+    "memory": {
+      "district": "徐汇区",
+      "budget_per_person": 100,
+      "time_budget_minutes": 180,
+      "start_at": "14:00"
+    },
+    "expect": {
+      "district": "徐汇区",
+      "budget_per_person": 100,
+      "time_budget_minutes": 180,
+      "start_at": "14:00",
+      "preferred_cuisines": [
+        "甜品"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
   },
   {
     "id": "memory_budget_override",
     "query": "预算改成80，去吃日料",
-    "memory": {"district": "静安区", "budget_per_person": 150, "time_budget_minutes": 180},
-    "expect": {"district": "静安区", "budget_per_person": 80, "time_budget_minutes": 180, "preferred_cuisines": ["日料"], "domains": ["dining"]}
-  }
-,
+    "memory": {
+      "district": "静安区",
+      "budget_per_person": 150,
+      "time_budget_minutes": 180
+    },
+    "expect": {
+      "district": "静安区",
+      "budget_per_person": 80,
+      "time_budget_minutes": 180,
+      "preferred_cuisines": [
+        "日料"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
   {
     "id": "xuhui_morning_sushi_minutes",
     "query": "徐汇区早上9点出发，吃寿司，预算120元，2小时",
-    "expect": {"district": "徐汇区", "budget_per_person": 120, "time_budget_minutes": 120, "start_at": "09:00", "preferred_cuisines": ["日料"], "domains": ["dining"]}
+    "expect": {
+      "district": "徐汇区",
+      "budget_per_person": 120,
+      "time_budget_minutes": 120,
+      "start_at": "09:00",
+      "preferred_cuisines": [
+        "日料"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
   },
   {
     "id": "huangpu_night_coffee_default_duration",
     "query": "黄浦区夜间7点以后喝咖啡，预算60元",
-    "expect": {"district": "黄浦区", "budget_per_person": 60, "time_budget_minutes": 180, "start_at": "19:00", "preferred_cuisines": ["咖啡"], "domains": ["dining"]}
+    "expect": {
+      "district": "黄浦区",
+      "budget_per_person": 60,
+      "time_budget_minutes": 180,
+      "start_at": "19:00",
+      "preferred_cuisines": [
+        "咖啡"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
   },
   {
     "id": "pudong_half_day_park",
     "query": "浦东新区半天逛公园，预算100元",
-    "expect": {"district": "浦东新区", "budget_per_person": 100, "time_budget_minutes": 240, "domains": ["sightseeing"]}
+    "expect": {
+      "district": "浦东新区",
+      "budget_per_person": 100,
+      "time_budget_minutes": 240,
+      "domains": [
+        "sightseeing"
+      ]
+    }
   },
   {
     "id": "jingan_shopping_four_hours",
     "query": "静安区逛街购物，预算200元，4小时",
-    "expect": {"district": "静安区", "budget_per_person": 200, "time_budget_minutes": 240, "domains": ["shopping"]}
+    "expect": {
+      "district": "静安区",
+      "budget_per_person": 200,
+      "time_budget_minutes": 240,
+      "domains": [
+        "shopping"
+      ]
+    }
   },
   {
     "id": "xuhui_afternoon_snack_ninety_minutes",
     "query": "徐汇区下午4点以后吃小吃，预算50元，90分钟",
-    "expect": {"district": "徐汇区", "budget_per_person": 50, "time_budget_minutes": 90, "start_at": "16:00", "preferred_cuisines": ["小吃快餐"], "domains": ["dining"]}
+    "expect": {
+      "district": "徐汇区",
+      "budget_per_person": 50,
+      "time_budget_minutes": 90,
+      "start_at": "16:00",
+      "preferred_cuisines": [
+        "小吃快餐"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
   },
   {
     "id": "huangpu_lunch_shanghai_cuisine",
     "query": "黄浦区中午12点出发吃上海菜，预算180元",
-    "expect": {"district": "黄浦区", "budget_per_person": 180, "time_budget_minutes": 180, "start_at": "12:00", "preferred_cuisines": ["本帮菜"], "domains": ["dining"]}
+    "expect": {
+      "district": "黄浦区",
+      "budget_per_person": 180,
+      "time_budget_minutes": 180,
+      "start_at": "12:00",
+      "preferred_cuisines": [
+        "本帮菜"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
   },
   {
     "id": "pudong_evening_hotpot_accepts_queue",
     "query": "浦东新区晚上8点吃火锅，可以排队20分钟，预算160元",
-    "expect": {"district": "浦东新区", "budget_per_person": 160, "time_budget_minutes": 180, "start_at": "20:00", "queue_tolerance_minutes": 20, "preferred_cuisines": ["火锅"], "domains": ["dining"]}
+    "expect": {
+      "district": "浦东新区",
+      "budget_per_person": 160,
+      "time_budget_minutes": 180,
+      "start_at": "20:00",
+      "queue_tolerance_minutes": 20,
+      "preferred_cuisines": [
+        "火锅"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
   },
   {
     "id": "jingan_coffee_excludes_green_space",
     "query": "静安区不要去绿地，喝咖啡，人均90元",
-    "expect": {"district": "静安区", "budget_per_person": 90, "time_budget_minutes": 180, "preferred_cuisines": ["咖啡"], "excluded_categories": ["公园"], "domains": ["dining"]}
+    "expect": {
+      "district": "静安区",
+      "budget_per_person": 90,
+      "time_budget_minutes": 180,
+      "preferred_cuisines": [
+        "咖啡"
+      ],
+      "excluded_categories": [
+        "公园"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
   },
   {
     "id": "memory_keeps_cuisine_without_domain_signal",
     "query": "改成3小时",
-    "memory": {"district": "徐汇区", "budget_per_person": 110, "preferred_cuisines": ["甜品"], "domains": ["dining"]},
-    "expect": {"district": "徐汇区", "budget_per_person": 110, "time_budget_minutes": 180, "preferred_cuisines": ["甜品"], "domains": ["dining"]}
+    "memory": {
+      "district": "徐汇区",
+      "budget_per_person": 110,
+      "preferred_cuisines": [
+        "甜品"
+      ],
+      "domains": [
+        "dining"
+      ]
+    },
+    "expect": {
+      "district": "徐汇区",
+      "budget_per_person": 110,
+      "time_budget_minutes": 180,
+      "preferred_cuisines": [
+        "甜品"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
   },
   {
     "id": "memory_queue_tolerance_inheritance",
     "query": "再安排一家",
-    "memory": {"district": "浦东新区", "budget_per_person": 150, "time_budget_minutes": 120, "queue_tolerance_minutes": 20, "preferred_cuisines": ["火锅"], "domains": ["dining"]},
-    "expect": {"district": "浦东新区", "budget_per_person": 150, "time_budget_minutes": 120, "queue_tolerance_minutes": 20, "preferred_cuisines": ["火锅"], "domains": ["dining"]}
+    "memory": {
+      "district": "浦东新区",
+      "budget_per_person": 150,
+      "time_budget_minutes": 120,
+      "queue_tolerance_minutes": 20,
+      "preferred_cuisines": [
+        "火锅"
+      ],
+      "domains": [
+        "dining"
+      ]
+    },
+    "expect": {
+      "district": "浦东新区",
+      "budget_per_person": 150,
+      "time_budget_minutes": 120,
+      "queue_tolerance_minutes": 20,
+      "preferred_cuisines": [
+        "火锅"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "edge_time_midnight",
+    "query": "黄浦区从0点开始逛公园，预算100元，2小时",
+    "expect": {
+      "district": "黄浦区",
+      "start_at": "00:00",
+      "time_budget_minutes": 120
+    }
+  },
+  {
+    "id": "edge_time_early_0730",
+    "query": "黄浦区早上7:30开始逛公园，预算100元，2小时",
+    "expect": {
+      "district": "黄浦区",
+      "start_at": "07:30",
+      "time_budget_minutes": 120
+    }
+  },
+  {
+    "id": "edge_time_morning_cn",
+    "query": "黄浦区上午九点开始逛公园，预算100元，2小时",
+    "expect": {
+      "district": "黄浦区",
+      "start_at": "09:00",
+      "time_budget_minutes": 120
+    }
+  },
+  {
+    "id": "edge_time_noon",
+    "query": "黄浦区中午12点开始逛公园，预算100元，2小时",
+    "expect": {
+      "district": "黄浦区",
+      "start_at": "12:00",
+      "time_budget_minutes": 120
+    }
+  },
+  {
+    "id": "edge_time_afternoon_1305",
+    "query": "黄浦区下午1:05开始逛公园，预算100元，2小时",
+    "expect": {
+      "district": "黄浦区",
+      "start_at": "13:05",
+      "time_budget_minutes": 120
+    }
+  },
+  {
+    "id": "edge_time_afternoon_cn",
+    "query": "黄浦区下午三点开始逛公园，预算100元，2小时，晚上8点前回",
+    "expect": {
+      "district": "黄浦区",
+      "start_at": "15:00",
+      "time_budget_minutes": 120,
+      "return_by": "20:00"
+    }
+  },
+  {
+    "id": "edge_time_late_afternoon",
+    "query": "黄浦区午后4点开始逛公园，预算100元，2小时",
+    "expect": {
+      "district": "黄浦区",
+      "start_at": "16:00",
+      "time_budget_minutes": 120
+    }
+  },
+  {
+    "id": "edge_time_evening_default",
+    "query": "黄浦区晚上出发逛公园，预算100元，2小时",
+    "expect": {
+      "district": "黄浦区",
+      "start_at": "18:00",
+      "time_budget_minutes": 120
+    }
+  },
+  {
+    "id": "edge_time_evening_1830",
+    "query": "黄浦区晚上6:30出发逛公园，预算100元，2小时",
+    "expect": {
+      "district": "黄浦区",
+      "start_at": "18:30",
+      "time_budget_minutes": 120
+    }
+  },
+  {
+    "id": "edge_time_night_default",
+    "query": "黄浦区夜间出发逛公园，预算100元，2小时",
+    "expect": {
+      "district": "黄浦区",
+      "start_at": "19:00",
+      "time_budget_minutes": 120
+    }
+  },
+  {
+    "id": "edge_time_night_2130",
+    "query": "黄浦区晚上9:30开始逛公园，预算100元，2小时",
+    "expect": {
+      "district": "黄浦区",
+      "start_at": "21:30",
+      "time_budget_minutes": 120
+    }
+  },
+  {
+    "id": "edge_time_clock_2355",
+    "query": "黄浦区从23:55开始逛公园，预算100元，2小时",
+    "expect": {
+      "district": "黄浦区",
+      "start_at": "23:55",
+      "time_budget_minutes": 120
+    }
+  },
+  {
+    "id": "edge_duration_half_hour",
+    "query": "徐汇区半个小时逛街，预算160元",
+    "expect": {
+      "time_budget_minutes": 30,
+      "domains": [
+        "shopping"
+      ]
+    }
+  },
+  {
+    "id": "edge_duration_ninety_minutes",
+    "query": "徐汇区90分钟逛街，预算160元",
+    "expect": {
+      "time_budget_minutes": 90,
+      "domains": [
+        "shopping"
+      ]
+    }
+  },
+  {
+    "id": "edge_duration_one_half",
+    "query": "徐汇区一个半小时逛街，预算160元",
+    "expect": {
+      "time_budget_minutes": 90,
+      "domains": [
+        "shopping"
+      ]
+    }
+  },
+  {
+    "id": "edge_duration_two_half",
+    "query": "徐汇区两个半小时逛街，预算160元",
+    "expect": {
+      "time_budget_minutes": 150,
+      "domains": [
+        "shopping"
+      ]
+    }
+  },
+  {
+    "id": "edge_duration_decimal",
+    "query": "徐汇区2.5小时逛街，预算160元",
+    "expect": {
+      "time_budget_minutes": 150,
+      "domains": [
+        "shopping"
+      ]
+    }
+  },
+  {
+    "id": "edge_duration_chinese_three",
+    "query": "徐汇区三小时逛街，预算160元",
+    "expect": {
+      "time_budget_minutes": 180,
+      "domains": [
+        "shopping"
+      ]
+    }
+  },
+  {
+    "id": "edge_duration_five_hours",
+    "query": "徐汇区玩五个小时逛街，预算160元",
+    "expect": {
+      "time_budget_minutes": 300,
+      "domains": [
+        "shopping"
+      ]
+    }
+  },
+  {
+    "id": "edge_duration_half_day",
+    "query": "徐汇区半天逛街，预算160元",
+    "expect": {
+      "time_budget_minutes": 240,
+      "domains": [
+        "shopping"
+      ]
+    }
+  },
+  {
+    "id": "edge_budget_35",
+    "query": "静安区吃日料，人均大约35元，2小时",
+    "expect": {
+      "budget_per_person": 35,
+      "preferred_cuisines": [
+        "日料"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "edge_budget_49",
+    "query": "静安区吃日料，人均大约49元，2小时",
+    "expect": {
+      "budget_per_person": 49,
+      "preferred_cuisines": [
+        "日料"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "edge_budget_80",
+    "query": "静安区吃日料，预算控制在80块，2小时",
+    "expect": {
+      "budget_per_person": 80,
+      "preferred_cuisines": [
+        "日料"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "edge_budget_99",
+    "query": "静安区吃日料，人均大约99元，2小时",
+    "expect": {
+      "budget_per_person": 99,
+      "preferred_cuisines": [
+        "日料"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "edge_budget_100",
+    "query": "静安区吃日料，预算控制在100块，2小时",
+    "expect": {
+      "budget_per_person": 100,
+      "preferred_cuisines": [
+        "日料"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "edge_budget_150",
+    "query": "静安区吃日料，预算控制在150块，2小时",
+    "expect": {
+      "budget_per_person": 150,
+      "preferred_cuisines": [
+        "日料"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "edge_budget_299",
+    "query": "静安区吃日料，人均大约299元，2小时",
+    "expect": {
+      "budget_per_person": 299,
+      "preferred_cuisines": [
+        "日料"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "edge_budget_500",
+    "query": "静安区吃日料，预算控制在500块，2小时",
+    "expect": {
+      "budget_per_person": 500,
+      "preferred_cuisines": [
+        "日料"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "multi_exclusion_museum_park",
+    "query": "黄浦区不要博物馆和公园，想喝咖啡，3小时",
+    "expect": {
+      "excluded_categories": [
+        "博物馆",
+        "公园"
+      ],
+      "preferred_cuisines": [
+        "咖啡"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "multi_exclusion_museum_gallery",
+    "query": "黄浦区不去博物馆和美术馆，想喝咖啡，3小时",
+    "expect": {
+      "excluded_categories": [
+        "博物馆",
+        "美术馆"
+      ],
+      "preferred_cuisines": [
+        "咖啡"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "multi_exclusion_park_mall",
+    "query": "黄浦区别去公园和商场，想喝咖啡，3小时",
+    "expect": {
+      "excluded_categories": [
+        "公园",
+        "商场"
+      ],
+      "preferred_cuisines": [
+        "咖啡"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "multi_exclusion_exhibit_park",
+    "query": "黄浦区跳过展览和绿地，想喝咖啡，3小时",
+    "expect": {
+      "excluded_categories": [
+        "公园",
+        "展览"
+      ],
+      "preferred_cuisines": [
+        "咖啡"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "multi_exclusion_all_culture",
+    "query": "黄浦区不想去博物馆、美术馆和展览，想喝咖啡，3小时",
+    "expect": {
+      "excluded_categories": [
+        "博物馆",
+        "美术馆",
+        "展览"
+      ],
+      "preferred_cuisines": [
+        "咖啡"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "multi_exclusion_museum_mall",
+    "query": "黄浦区不要去博物馆和百货，想喝咖啡，3小时",
+    "expect": {
+      "excluded_categories": [
+        "博物馆",
+        "商场"
+      ],
+      "preferred_cuisines": [
+        "咖啡"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "multi_exclusion_green_gallery",
+    "query": "黄浦区不想去绿地和美术馆，想喝咖啡，3小时",
+    "expect": {
+      "excluded_categories": [
+        "公园",
+        "美术馆"
+      ],
+      "preferred_cuisines": [
+        "咖啡"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "multi_exclusion_triple_mixed",
+    "query": "黄浦区别去公园、商场和展览，想喝咖啡，3小时",
+    "expect": {
+      "excluded_categories": [
+        "公园",
+        "展览",
+        "商场"
+      ],
+      "preferred_cuisines": [
+        "咖啡"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "rare_preference_chinese",
+    "query": "浦东新区想吃中国菜，人均180元，3小时",
+    "expect": {
+      "preferred_cuisines": [
+        "中餐"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "rare_preference_shanghai",
+    "query": "浦东新区想吃上海菜，人均180元，3小时",
+    "expect": {
+      "preferred_cuisines": [
+        "本帮菜"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "rare_preference_sichuan",
+    "query": "浦东新区想吃四川菜，人均180元，3小时",
+    "expect": {
+      "preferred_cuisines": [
+        "川菜"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "rare_preference_cantonese",
+    "query": "浦东新区想吃广东菜，人均180元，3小时",
+    "expect": {
+      "preferred_cuisines": [
+        "粤菜"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "rare_preference_japanese",
+    "query": "浦东新区想吃日本料理，人均180元，3小时",
+    "expect": {
+      "preferred_cuisines": [
+        "日料"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "rare_preference_sushi",
+    "query": "浦东新区想吃寿司，人均180元，3小时",
+    "expect": {
+      "preferred_cuisines": [
+        "日料"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "rare_preference_italian",
+    "query": "浦东新区想吃意大利餐，人均180元，3小时",
+    "expect": {
+      "preferred_cuisines": [
+        "西餐"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "rare_preference_dessert",
+    "query": "浦东新区想吃甜点，人均180元，3小时",
+    "expect": {
+      "preferred_cuisines": [
+        "甜品"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "multi_domain_massage",
+    "query": "静安区做按摩放松三小时",
+    "expect": {
+      "domains": [
+        "leisure"
+      ]
+    }
+  },
+  {
+    "id": "multi_domain_fitness_meal",
+    "query": "徐汇区健身再吃饭四小时",
+    "expect": {
+      "domains": [
+        "dining",
+        "leisure"
+      ]
+    }
+  },
+  {
+    "id": "multi_domain_mall_japanese",
+    "query": "黄浦区逛商场再吃日料四小时",
+    "expect": {
+      "domains": [
+        "dining",
+        "shopping"
+      ]
+    }
+  },
+  {
+    "id": "multi_domain_exhibit_shop",
+    "query": "浦东新区看展再购物半天",
+    "expect": {
+      "domains": [
+        "sightseeing",
+        "shopping"
+      ]
+    }
+  },
+  {
+    "id": "multi_domain_park_coffee",
+    "query": "徐汇区公园散步再喝咖啡三小时",
+    "expect": {
+      "domains": [
+        "dining",
+        "sightseeing"
+      ]
+    }
+  },
+  {
+    "id": "multi_domain_family_meal",
+    "query": "浦东新区带孩子去亲子乐园再吃饭五小时",
+    "expect": {
+      "domains": [
+        "dining",
+        "leisure"
+      ]
+    }
+  },
+  {
+    "id": "memory_incremental_district",
+    "query": "预算改成90",
+    "memory": {
+      "district": "静安区",
+      "time_budget_minutes": 240,
+      "domains": [
+        "shopping"
+      ]
+    },
+    "expect": {
+      "district": "静安区",
+      "budget_per_person": 90,
+      "time_budget_minutes": 240,
+      "domains": [
+        "shopping"
+      ]
+    }
+  },
+  {
+    "id": "memory_incremental_start",
+    "query": "再加一家甜品",
+    "memory": {
+      "district": "徐汇区",
+      "start_at": "15:30",
+      "time_budget_minutes": 180
+    },
+    "expect": {
+      "start_at": "15:30",
+      "preferred_cuisines": [
+        "甜品"
+      ]
+    }
+  },
+  {
+    "id": "memory_incremental_queue_zero",
+    "query": "换一家日料",
+    "memory": {
+      "district": "黄浦区",
+      "queue_tolerance_minutes": 0
+    },
+    "expect": {
+      "queue_tolerance_minutes": 0,
+      "preferred_cuisines": [
+        "日料"
+      ]
+    }
+  },
+  {
+    "id": "memory_incremental_queue_twenty",
+    "query": "再安排一家火锅",
+    "memory": {
+      "district": "浦东新区",
+      "queue_tolerance_minutes": 20
+    },
+    "expect": {
+      "queue_tolerance_minutes": 20,
+      "preferred_cuisines": [
+        "火锅"
+      ]
+    }
+  },
+  {
+    "id": "memory_incremental_excluded",
+    "query": "改成4小时",
+    "memory": {
+      "district": "黄浦区",
+      "excluded_categories": [
+        "博物馆",
+        "公园"
+      ]
+    },
+    "expect": {
+      "time_budget_minutes": 240,
+      "excluded_categories": [
+        "博物馆",
+        "公园"
+      ]
+    }
+  },
+  {
+    "id": "memory_incremental_cuisine",
+    "query": "预算100元",
+    "memory": {
+      "district": "静安区",
+      "preferred_cuisines": [
+        "川菜"
+      ],
+      "domains": [
+        "dining"
+      ]
+    },
+    "expect": {
+      "budget_per_person": 100,
+      "preferred_cuisines": [
+        "川菜"
+      ],
+      "domains": [
+        "dining"
+      ]
+    }
+  },
+  {
+    "id": "memory_incremental_duration",
+    "query": "下午4点开始",
+    "memory": {
+      "district": "徐汇区",
+      "time_budget_minutes": 300
+    },
+    "expect": {
+      "start_at": "16:00",
+      "time_budget_minutes": 300
+    }
+  },
+  {
+    "id": "memory_incremental_override",
+    "query": "换到黄浦区吃粤菜",
+    "memory": {
+      "district": "静安区",
+      "preferred_cuisines": [
+        "日料"
+      ]
+    },
+    "expect": {
+      "district": "黄浦区",
+      "preferred_cuisines": [
+        "粤菜"
+      ]
+    }
   }
 ]

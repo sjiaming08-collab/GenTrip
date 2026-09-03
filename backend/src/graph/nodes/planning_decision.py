@@ -38,13 +38,23 @@ def assess_planning_feasibility(state: GraphState) -> PlanningDecision:
         domains.append("dining")
 
     missing: list[str] = []
-    if not constraints.get("district") and not state.get("geo_scope"):
+    location_ready = bool(
+        constraints.get("city")
+        or constraints.get("district")
+        or constraints.get("location_mentions")
+        or state.get("geo_scope")
+        or (state.get("user_lat") is not None and state.get("user_lng") is not None)
+    )
+    if not location_ready:
         missing.append("location")
     available = _available_minutes(constraints)
     if available is None:
         missing.append("duration")
 
-    scope_type = str((state.get("geo_scope") or {}).get("scope_type") or "district")
+    scope_type = str(
+        (state.get("geo_scope") or {}).get("scope_type")
+        or ("district" if constraints.get("district") else "city")
+    )
     travel_low, travel_expected, travel_high = _TRAVEL_RANGE_BY_SCOPE.get(scope_type, _TRAVEL_RANGE_BY_SCOPE["district"])
     legs = max(0, len(domains) - 1)
     optimistic = sum(_VISIT_RANGE.get(domain, (30, 60, 90))[0] for domain in domains) + legs * travel_low

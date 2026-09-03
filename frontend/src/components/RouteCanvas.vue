@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { RoutePlanResult, RouteStop } from '../types'
 import PoiCard from './PoiCard.vue'
+import TravelLegCard from './TravelLegCard.vue'
 
 const props = defineProps<{
   result?: RoutePlanResult | null
@@ -47,13 +48,14 @@ const totals = computed(() => {
         <div class="panel-heading"><h3>行程时间线</h3><span>{{ result.route.stops.length }} 个地点</span></div>
         <p class="route-summary">{{ result.route.summary }}</p>
         <div class="stops-list">
-          <PoiCard
-            v-for="stop in result.route.stops"
-            :key="`${result.route.plan_id}-${stop.sequence}`"
-            :stop="stop"
-            :is-current="selectedStopId === stop.poi_id"
-            @click="emit('selectStop', stop)"
-          />
+          <template v-for="(stop, index) in result.route.stops" :key="`${result.route.plan_id}-${stop.sequence}`">
+            <PoiCard
+              :stop="stop"
+              :is-current="selectedStopId === stop.poi_id"
+              @click="emit('selectStop', stop)"
+            />
+            <TravelLegCard v-if="result.route.legs[index]" :leg="result.route.legs[index]" />
+          </template>
         </div>
       </section>
 
@@ -72,5 +74,5 @@ const totals = computed(() => {
 </template>
 
 <style scoped>
-.route-canvas{border:1px solid #d8e3dc;background:#fff}.route-overview{display:flex;align-items:end;justify-content:space-between;gap:24px;padding:24px 26px;border-bottom:1px solid #d8e3dc}.route-title p,.panel-heading span{margin:0;color:#668378;font-size:12px}.route-title h2{margin:5px 0;color:#173d31;font:600 25px/1.2 Georgia,"Noto Serif SC",serif}.route-title>span{color:#207854;font-size:13px;font-weight:700}.route-totals{display:grid;grid-template-columns:repeat(4,minmax(82px,1fr));gap:18px;margin:0}.route-totals div{min-width:0}.route-totals dt{color:#7a9288;font-size:11px}.route-totals dd{margin:5px 0 0;color:#274f40;font-size:14px;font-weight:700;white-space:nowrap}.route-body{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(260px,.8fr)}.timeline-panel{padding:22px 24px}.route-inspector{padding:22px;border-left:1px solid #d8e3dc;background:#f6faf7}.panel-heading{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.panel-heading h3{margin:0;color:#214b3a;font-size:14px}.route-summary{margin:8px 0 17px;color:#668075;font-size:13px;line-height:1.6}.stops-list{display:grid;gap:8px}.stops-list :deep(.poi-card){margin:0}.route-strip{display:grid;gap:0;margin:16px 0;padding:0;list-style:none}.route-strip li{position:relative;display:flex;gap:10px;padding:0 0 18px;cursor:pointer}.route-strip li:not(:last-child)::before{position:absolute;top:25px;bottom:0;left:10px;width:1px;background:#cbded2;content:""}.route-strip li>span{z-index:1;display:grid;width:21px;height:21px;place-items:center;border-radius:50%;background:#dcefe2;color:#156b4b;font-size:11px;font-weight:800}.route-strip li.selected>span{background:#176f50;color:#fff}.route-strip strong,.route-strip small{display:block}.route-strip strong{overflow:hidden;color:#244c3c;font-size:13px;text-overflow:ellipsis;white-space:nowrap}.route-strip small{margin-top:3px;color:#748e82;font-size:11px}.inspector-note{margin:5px 0 0;padding-top:14px;border-top:1px solid #dce9df;color:#799086;font-size:12px;line-height:1.55}@media(max-width:780px){.route-overview{display:grid;padding:19px}.route-totals{grid-template-columns:repeat(2,1fr);gap:14px}.route-body{grid-template-columns:1fr}.timeline-panel{padding:19px}.route-inspector{padding:19px;border-top:1px solid #d8e3dc;border-left:0}}
+.route-canvas{overflow:hidden;border:1px solid #d8e0db;border-radius:14px;background:#fff;box-shadow:0 8px 26px rgba(38,50,44,.06)}.route-overview{display:flex;align-items:end;justify-content:space-between;gap:24px;padding:24px 26px;border-bottom:1px solid #dde3df}.route-title p,.panel-heading span{margin:0;color:#6f7e77;font-size:12px}.route-title h2{margin:5px 0;color:#283831;font:700 24px/1.3 "Microsoft YaHei","微软雅黑",sans-serif}.route-title>span{color:#207854;font-size:13px;font-weight:700}.route-totals{display:grid;grid-template-columns:repeat(4,minmax(82px,1fr));gap:18px;margin:0}.route-totals div{min-width:0;padding:8px 10px;border-radius:9px;background:#f6f8f7}.route-totals dt{color:#7a8580;font-size:11px}.route-totals dd{margin:5px 0 0;color:#34443d;font-size:14px;font-weight:700;white-space:nowrap}.route-body{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(260px,.8fr)}.timeline-panel{padding:22px 24px}.route-inspector{padding:22px;border-left:1px solid #dde3df;background:#f4f7f9}.panel-heading{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.panel-heading h3{margin:0;color:#30433a;font-size:14px}.route-summary{margin:8px 0 17px;color:#687870;font-size:13px;line-height:1.6}.stops-list{display:grid;gap:8px}.stops-list :deep(.poi-card){margin:0}.route-strip{display:grid;gap:0;margin:16px 0;padding:0;list-style:none}.route-strip li{position:relative;display:flex;gap:10px;padding:0 0 18px;cursor:pointer}.route-strip li:not(:last-child)::before{position:absolute;top:25px;bottom:0;left:10px;width:1px;background:#cbded2;content:""}.route-strip li>span{z-index:1;display:grid;width:21px;height:21px;place-items:center;border-radius:50%;background:#dcefe2;color:#156b4b;font-size:11px;font-weight:800}.route-strip li.selected>span{background:#176f50;color:#fff}.route-strip strong,.route-strip small{display:block}.route-strip strong{overflow:hidden;color:#34443d;font-size:13px;text-overflow:ellipsis;white-space:nowrap}.route-strip small{margin-top:3px;color:#74817b;font-size:11px}.inspector-note{margin:5px 0 0;padding-top:14px;border-top:1px solid #dce3df;color:#75837d;font-size:12px;line-height:1.55}@media(max-width:780px){.route-overview{display:grid;padding:19px}.route-totals{grid-template-columns:repeat(2,1fr);gap:14px}.route-body{grid-template-columns:1fr}.timeline-panel{padding:19px}.route-inspector{padding:19px;border-top:1px solid #d8e3dc;border-left:0}}
 </style>

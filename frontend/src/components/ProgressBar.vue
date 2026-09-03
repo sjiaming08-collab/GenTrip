@@ -12,6 +12,7 @@ const PHASE_LABELS: Record<string, string> = {
   turn_orchestrate: '正在理解需求...',
   constraint_extract: '正在分析出行偏好...',
   geo_resolve: '正在定位目标区域...',
+  activity_blueprint: '正在构思活动蓝图...',
   poi_retrieve: '正在为您挑选好去处...',
   route_generate: '正在生成候选路线...',
   route_validate: '正在检查可行性...',

@@ -34,6 +34,8 @@ D:\conda3\envs\GenTrip\python.exe scripts\evaluate_route_plans.py --json-output 
 | pudong_three_hour_sightseeing | 浦东新区3小时公园散步，人均80元 | 纯游玩路线、时间预算 |
 | jingan_half_day_shopping | 静安区半天购物逛街，人均100元 | 购物域召回、购物路线生成 |
 
+另外 5 条用例覆盖显式下午出发、否定范围、排队上限、日料与文化活动组合、书店与咖啡组合。显式声明的 `required_domains`、`required_category_groups` 和 `min_stops` 是不可被加权总分抵消的通过条件。
+
 ## 合法性判断
 
 脚本会同时检查链路自身输出和独立规则。Plan 与 Replan 都以 `RouteJudge` 为唯一硬约束判断入口；不允许把“违规最少”的路线提升为可用路线：
@@ -43,7 +45,9 @@ D:\conda3\envs\GenTrip\python.exe scripts\evaluate_route_plans.py --json-output 
 - 非 `degraded` 路线
 - 人均不超过 `budget_per_person`
 - 总时长不超过 `time_budget_minutes`
+- 首站不得早于 `start_at`
 - 最后一站离开时间不晚于 `return_by`
+- 路线 POI 必须属于请求行政区
 - 每站到达/离开顺序合法
 - 交通时间非负，且不超过 `90` 分钟
 - 营业窗口覆盖完整到店与停留区间
@@ -68,3 +72,11 @@ D:\conda3\envs\GenTrip\python.exe scripts\evaluate_route_plans.py --json-output 
 ```powershell
 .venv312\Scripts\python.exe scripts\evaluate_route_plans.py --no-fail
 ```
+
+`--json-output` 写出包含 manifest 版本、套件通过率、平均质量分、硬约束失败案例和逐案例证据的质量报告。主 CI 只使用确定性门禁；主观体验评估可离线运行：
+
+```powershell
+D:\conda3\envs\GenTrip\python.exe scripts\evaluate_route_plans.py --live-llm --llm-judge --json-output .runtime_logs\route-eval-judge.json
+```
+
+Judge 输出必须符合固定 Pydantic schema，并分别评价需求满足、指令遵循、POI 依据、路线连贯性和解释质量；任何硬约束违规都强制判为失败。

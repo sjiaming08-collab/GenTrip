@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import json
 from functools import lru_cache
-from pathlib import Path
 
 from ..models.retrieval import IntentDomain
+from ..resources import fixture_path
 
-FIXTURES_DIR = Path(__file__).resolve().parents[2] / "fixtures"
-TAXONOMY_PATH = FIXTURES_DIR / "category_taxonomy.json"
+TAXONOMY_PATH = fixture_path("category_taxonomy.json")
 
 DOMAIN_TO_PURPOSE_KEY = {
     IntentDomain.DINING: "DINING",
@@ -18,7 +17,9 @@ DOMAIN_TO_PURPOSE_KEY = {
     IntentDomain.LEISURE: "LEISURE",
 }
 
-GENERIC_DINING_TERMS = frozenset({"美食", "餐饮", "吃饭", "吃东西", "吃点东西"})
+GENERIC_DINING_TERMS = frozenset({
+    "美食", "餐饮", "吃饭", "吃东西", "吃点东西", "正餐", "简餐", "午餐", "晚餐",
+})
 DEFAULT_MEAL_CATEGORIES = (
     "本帮菜",
     "火锅",
@@ -71,6 +72,20 @@ def all_retrieval_leaves() -> set[str]:
     for domain in IntentDomain:
         leaves |= domain_leaves(domain)
     return leaves
+
+
+def domain_for_category(category: str | None) -> IntentDomain | None:
+    """Resolve a category, alias, or group to its owning retrieval domain."""
+    if not category:
+        return None
+    normalized = normalize_cuisine_term(str(category))
+    if normalized in GENERIC_DINING_TERMS:
+        return IntentDomain.DINING
+    expanded = expand_categories([normalized]) or {normalized}
+    for domain in IntentDomain:
+        if expanded & domain_leaves(domain):
+            return domain
+    return None
 
 
 def expand_categories(categories: list[str] | None) -> set[str] | None:

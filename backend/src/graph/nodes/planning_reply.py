@@ -9,6 +9,37 @@ async def planning_reply(state: GraphState) -> dict:
     status = str(decision.get("status") or "infeasible")
     reasons = [str(item) for item in decision.get("reasons") or []]
     options = decision.get("options") or []
+    missing_required_slots = list(
+        (state.get("retrieval_meta") or {}).get("missing_required_slots") or []
+    )
+    planning_failures = list(state.get("planning_failures") or [])
+    if not state.get("valid_routes") and planning_failures:
+        status = "infeasible"
+        first = planning_failures[0]
+        failure_type = str(first.get("failure_type") or "explicit_constraint_conflict")
+        slot_id = str(first.get("slot_id") or "")
+        labels = {
+            "candidate_absent": "必选活动没有可靠地点候选。",
+            "provider_unavailable": "地图数据服务暂不可用。",
+            "temporal_conflict": "必选活动与可用时间窗口冲突。",
+            "opening_conflict": "候选地点在计划时段未营业。",
+            "spatial_conflict": "活动地点之间距离超出可执行范围。",
+            "budget_conflict": "明确预算不足以覆盖必选活动。",
+            "queue_conflict": "候选地点排队时间超过明确上限。",
+            "explicit_constraint_conflict": "当前明确约束之间存在冲突。",
+        }
+        reasons = [f"{labels.get(failure_type, labels['explicit_constraint_conflict'])}{f'（{slot_id}）' if slot_id else ''}"]
+        options = []
+    if not state.get("valid_routes") and missing_required_slots:
+        status = "infeasible"
+        reasons = [
+            "必选活动未检索到可靠地点，已停止生成，未使用虚构 POI。"
+        ]
+        options = [
+            {"action": "expand_area", "label": "扩大检索范围"},
+            {"action": "relax_category", "label": "放宽活动类别"},
+            {"action": "remove_slot", "label": "移除该活动"},
+        ]
     if not state.get("valid_routes") and state.get("validation_reports"):
         status = "infeasible"
         reasons = list(dict.fromkeys(

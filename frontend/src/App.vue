@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import RoutePlanner from './components/RoutePlanner.vue'
-import FeedbackPanel from './components/FeedbackPanel.vue'
 import AuthGate from './components/AuthGate.vue'
 import RuntimeConsole from './components/RuntimeConsole.vue'
-import RouteCanvas from './components/RouteCanvas.vue'
+import RouteTurnCard from './components/RouteTurnCard.vue'
 import RuntimeProgress from './components/RuntimeProgress.vue'
 import { deleteSession, getCurrentUser, getHealth, getSession, listSessions, listWorkspaces, logout as logoutRequest, submitFeedback as saveFeedback, switchWorkspace, updateSessionTitle, type AuthIdentity, type Workspace } from './api'
 import { useRoutePlan } from './composables/useRoutePlan'
-import type { FeedbackRequest, RoutePlanRequest, RoutePlanResult, RouteStop, SessionDetail } from './types'
+import type { FeedbackRequest, RoutePlanRequest, RouteStop, RouteTurnSnapshot, SessionDetail } from './types'
+import { snapshotFromResponse, snapshotFromTurn } from './utils/routeSnapshots'
 
 type HistorySession = {
   sessionId: string
@@ -23,6 +23,7 @@ type ChatMessage = {
   role: 'user' | 'assistant'
   text: string
   time: string
+  routeSnapshot?: RouteTurnSnapshot
 }
 
 const SETTINGS_STORAGE_KEY = 'gentrip-agent-settings'
@@ -31,7 +32,6 @@ const {
   loading,
   currentPhase,
   currentRoute,
-  selectedResult,
   routeResults,
   presentation,
   error,
@@ -39,7 +39,6 @@ const {
   runtimeEvents,
   submitQuery,
   cancelPlanning,
-  selectResult,
   resetPlanningState,
   restoreRoute,
   recoverActiveRun,
@@ -49,10 +48,11 @@ const selectedStop = ref<RouteStop | null>(null)
 const sessionId = ref<string | null>(null)
 const historySessions = ref<HistorySession[]>([])
 const messages = ref<ChatMessage[]>([])
+const expandedSnapshotIds = ref<Set<string>>(new Set())
 const conversationThread = ref<HTMLElement | null>(null)
 const editingTitle = ref(false)
 const titleDraft = ref('')
-const defaultDistrict = ref('黄浦区')
+const defaultDistrict = ref('跟随当前位置')
 const defaultBudget = ref(150)
 const defaultDuration = ref(180)
 const profileId = ref('local-traveler')
@@ -64,14 +64,17 @@ const consoleOpen = ref(false)
 const preferencesOpen = ref(false)
 const llmEnabled = ref(false)
 const llmModel = ref<string | null>(null)
+const locating = ref(false)
 
-const replyType = computed(() => currentRoute.value?.reply_type ?? 'route')
-const isDiff = computed(() => replyType.value === 'diff')
-const isReject = computed(() => replyType.value === 'reject')
-const isDegraded = computed(() => replyType.value === 'degraded_route')
-const suggestionMoves = computed(() => currentRoute.value?.meta?.next_suggested_user_moves ?? [])
 const activeSession = computed(() => historySessions.value.find((item) => item.sessionId === sessionId.value))
 const activeTitle = computed(() => activeSession.value?.title || '新路线对话')
+const latestRouteSnapshotId = computed(() => {
+  for (let index = messages.value.length - 1; index >= 0; index -= 1) {
+    const snapshot = messages.value[index].routeSnapshot
+    if (snapshot) return snapshot.snapshot_id
+  }
+  return null
+})
 
 function nowTime() {
   return new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(new Date())
@@ -83,7 +86,6 @@ function buildRequest(request: RoutePlanRequest): RoutePlanRequest {
   if (!useDefaults.value) return { ...request, ...identityFields, query }
 
   const additions: string[] = []
-  if (!/(徐汇|静安|黄浦|浦东).{0,2}区?/.test(query)) additions.push(defaultDistrict.value)
   if (!/\d+\s*(元|块)/.test(query)) additions.push(`人均${defaultBudget.value}元`)
   if (!/\d+\s*(小时|h|分钟)/i.test(query) && !/半天/.test(query)) additions.push(`${defaultDuration.value / 60}小时`)
 
@@ -94,8 +96,37 @@ function buildRequest(request: RoutePlanRequest): RoutePlanRequest {
   }
 }
 
-function addMessage(role: ChatMessage['role'], text: string) {
-  messages.value.push({ id: crypto.randomUUID(), role, text, time: nowTime() })
+function currentCoordinates(): Promise<Pick<RoutePlanRequest, 'lat' | 'lng'>> {
+  if (!navigator.geolocation) return Promise.resolve({})
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => resolve({ lat: coords.latitude, lng: coords.longitude }),
+      () => resolve({}),
+      { enableHighAccuracy: false, timeout: 2500, maximumAge: 300000 },
+    )
+  })
+}
+
+function addMessage(role: ChatMessage['role'], text: string, routeSnapshot?: RouteTurnSnapshot) {
+  if (routeSnapshot) {
+    const existingIndex = messages.value.findIndex((item) => item.routeSnapshot?.snapshot_id === routeSnapshot.snapshot_id)
+    if (existingIndex >= 0) {
+      messages.value[existingIndex] = { ...messages.value[existingIndex], text, routeSnapshot }
+      return
+    }
+  }
+  messages.value.push({ id: crypto.randomUUID(), role, text, time: nowTime(), routeSnapshot })
+}
+
+function expandOnlySnapshot(snapshotId: string | null) {
+  expandedSnapshotIds.value = new Set(snapshotId ? [snapshotId] : [])
+}
+
+function toggleSnapshot(snapshotId: string) {
+  const next = new Set(expandedSnapshotIds.value)
+  if (next.has(snapshotId)) next.delete(snapshotId)
+  else next.add(snapshotId)
+  expandedSnapshotIds.value = next
 }
 
 function scrollToLatestMessage(behavior: ScrollBehavior = 'smooth') {
@@ -162,7 +193,7 @@ function saveHistory(query: string) {
   const item: HistorySession = {
     sessionId: currentRoute.value.session_id,
     title: existing?.title || query,
-    summary: presentation.value?.summary || selectedResult.value?.route.summary || '已生成路线',
+    summary: presentation.value?.summary || routeResults.value[0]?.route.summary || '已生成路线',
     updatedAt: nowTime(),
     routeCount: routeResults.value.length,
   }
@@ -170,8 +201,18 @@ function saveHistory(query: string) {
 }
 
 async function handleSubmit(request: RoutePlanRequest) {
+  const previousLatestSnapshotId = latestRouteSnapshotId.value
+  expandOnlySnapshot(null)
   selectedStop.value = null
-  const enriched = buildRequest({ ...request, session_id: request.session_id || sessionId.value || undefined })
+  let enriched = buildRequest({ ...request, session_id: request.session_id || sessionId.value || undefined })
+  if (enriched.lat == null || enriched.lng == null) {
+    locating.value = true
+    try {
+      enriched = { ...enriched, ...(await currentCoordinates()) }
+    } finally {
+      locating.value = false
+    }
+  }
   addMessage('user', request.query.trim())
   await submitQuery(enriched)
 
@@ -184,9 +225,19 @@ async function handleSubmit(request: RoutePlanRequest) {
     return
   }
 
+  if (error.value || !currentRoute.value) {
+    expandOnlySnapshot(previousLatestSnapshotId)
+    return
+  }
+
   if (currentRoute.value?.session_id) {
     sessionId.value = currentRoute.value.session_id
-    addMessage('assistant', presentation.value?.summary || '路线已生成，已在下方展示。')
+    addMessage(
+      'assistant',
+      presentation.value?.summary || '路线已生成，已在下方展示。',
+      snapshotFromResponse(currentRoute.value, request.query.trim()),
+    )
+    expandOnlySnapshot(currentRoute.value.turn_id || currentRoute.value.run_id)
     saveHistory(request.query.trim())
     try {
       await refreshHistory()
@@ -200,6 +251,7 @@ function startNewSession() {
   sessionId.value = null
   selectedStop.value = null
   messages.value = []
+  expandOnlySnapshot(null)
   editingTitle.value = false
   resetPlanningState()
   void nextTick(() => conversationThread.value?.scrollTo({ top: 0 }))
@@ -219,16 +271,19 @@ async function selectHistory(item: HistorySession) {
         time: new Date(turn.ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
       }]
       const assistantText = turn.assistant_message || turn.presentation?.summary
-      if (assistantText) {
+      if (assistantText || turn.route_results.length) {
         result.push({
           id: `assistant-${turn.turn_id}`,
           role: 'assistant',
-          text: assistantText,
+          text: assistantText || '该轮路线已生成。',
           time: new Date(turn.ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+          routeSnapshot: snapshotFromTurn(turn, item.sessionId),
         })
       }
       return result
     })
+    const lastSnapshot = [...messages.value].reverse().find((message) => message.routeSnapshot)?.routeSnapshot
+    expandOnlySnapshot(lastSnapshot?.snapshot_id ?? null)
     if (detail.latest_response) restoreRoute(detail.latest_response)
     editingTitle.value = false
     scrollToLatestMessage('auto')
@@ -267,11 +322,6 @@ async function removeActiveSession() {
   }
 }
 
-function handleSelectResult(result: RoutePlanResult) {
-  selectedStop.value = null
-  selectResult(result)
-}
-
 function handleSelectStop(stop: RouteStop) {
   selectedStop.value = stop
 }
@@ -279,7 +329,7 @@ function handleSelectStop(stop: RouteStop) {
 async function handleFeedback(feedback: FeedbackRequest) {
   await saveFeedback({
     ...feedback,
-    session_id: currentRoute.value?.session_id ?? sessionId.value ?? '',
+    session_id: feedback.session_id || currentRoute.value?.session_id || sessionId.value || '',
     tenant_id: authUser.value?.tenant.tenant_id,
   })
 }
@@ -291,7 +341,7 @@ function handleSuggestion(query: string) {
 onMounted(async () => {
   try {
     const savedSettings = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}')
-    defaultDistrict.value = savedSettings.defaultDistrict || defaultDistrict.value
+    defaultDistrict.value = '跟随当前位置'
     defaultBudget.value = savedSettings.defaultBudget || defaultBudget.value
     defaultDuration.value = savedSettings.defaultDuration || defaultDuration.value
     profileId.value = savedSettings.profileId || profileId.value
@@ -307,7 +357,12 @@ onMounted(async () => {
     const restored = await recoverActiveRun()
     if (restored) {
       sessionId.value = restored.session_id ?? null
-      addMessage('assistant', restored.presentation?.summary || '已恢复此前完成的路线规划。')
+      addMessage(
+        'assistant',
+        restored.presentation?.summary || '已恢复此前完成的路线规划。',
+        snapshotFromResponse(restored),
+      )
+      expandOnlySnapshot(restored.turn_id || restored.run_id)
       await refreshHistory()
     }
   } catch { historySessions.value = [] }
@@ -378,7 +433,7 @@ watch(
         <button v-if="authUser" class="logout-button" type="button" @click="signOut">退出</button>
       </div>
       <label v-if="authUser && workspaces.length > 1" class="workspace-switch">
-        <span>工作区</span>
+        <span>旅行空间</span>
         <select :value="authUser.tenant.tenant_id" @change="changeWorkspace">
           <option v-for="workspace in workspaces" :key="workspace.tenant_id" :value="workspace.tenant_id">
             {{ workspace.name }}
@@ -413,7 +468,7 @@ watch(
             <span class="state-dot" />
             {{ loading ? '规划中' : '可继续调整' }}
           </div>
-          <button class="console-trigger" type="button" @click="consoleOpen = true">运行与工作区</button>
+          <button class="console-trigger" type="button" @click="consoleOpen = true">运行详情</button>
         </div>
       </header>
 
@@ -426,13 +481,26 @@ watch(
           </div>
         </article>
 
-        <article v-for="message in messages" :key="message.id" class="message" :class="`${message.role}-message`">
-          <span v-if="message.role === 'assistant'" class="avatar">G</span>
-          <div class="message-bubble">
-            <p class="message-name">{{ message.role === 'assistant' ? 'GenTrip' : '你' }} · {{ message.time }}</p>
-            <p>{{ message.text }}</p>
-          </div>
-        </article>
+        <template v-for="message in messages" :key="message.id">
+          <article class="message" :class="`${message.role}-message`">
+            <span v-if="message.role === 'assistant'" class="avatar">G</span>
+            <div class="message-bubble">
+              <p class="message-name">{{ message.role === 'assistant' ? 'GenTrip' : '你' }} · {{ message.time }}</p>
+              <p>{{ message.text }}</p>
+            </div>
+          </article>
+          <RouteTurnCard
+            v-if="message.routeSnapshot"
+            :snapshot="message.routeSnapshot"
+            :is-latest="message.routeSnapshot.snapshot_id === latestRouteSnapshotId"
+            :expanded="expandedSnapshotIds.has(message.routeSnapshot.snapshot_id)"
+            :selected-stop-id="selectedStop?.poi_id ?? null"
+            @select-stop="handleSelectStop"
+            @submit-feedback="handleFeedback"
+            @suggestion="handleSuggestion"
+            @toggle="toggleSnapshot(message.routeSnapshot.snapshot_id)"
+          />
+        </template>
 
         <article v-if="loading" class="assistant-progress">
           <div class="progress-copy">
@@ -444,51 +512,6 @@ watch(
 
         <p v-if="error" class="error-state">{{ error }}</p>
 
-        <section v-if="currentRoute && !loading" class="route-response">
-          <div v-if="isDegraded" class="degraded-notice">已按可执行性放宽部分条件，以下路线仍可直接出发。</div>
-
-          <div v-if="isReject && presentation" class="reply-summary">
-            <p class="eyebrow">路线助手</p>
-            <h2>{{ presentation.title }}</h2>
-            <p>{{ presentation.summary }}</p>
-            <div class="suggestion-row">
-              <button v-for="move in suggestionMoves" :key="move" type="button" @click="handleSuggestion(move)">{{ move }}</button>
-            </div>
-          </div>
-
-          <template v-else>
-            <div v-if="presentation" class="reply-summary">
-              <p class="eyebrow">路线建议</p>
-              <h2>{{ presentation.title }}</h2>
-              <p>{{ presentation.summary }}</p>
-              <ul v-if="presentation.highlights.length">
-                <li v-for="item in presentation.highlights" :key="item">{{ item }}</li>
-              </ul>
-            </div>
-
-            <div v-if="isDiff && presentation" class="diff-strip">{{ presentation.summary }}</div>
-
-            <div v-if="currentRoute.assumptions.length" class="assumption-strip">
-              <strong>本次默认</strong>
-              <span v-for="item in currentRoute.assumptions" :key="`${item.slot}-${item.assumed_value}`">{{ item.message }}</span>
-            </div>
-
-            <div v-if="routeResults.length > 1" class="route-tabs" aria-label="备选路线">
-              <button
-                v-for="result in routeResults"
-                :key="result.route.plan_id"
-                type="button"
-                :class="{ active: selectedResult?.route.plan_id === result.route.plan_id }"
-                @click="handleSelectResult(result)"
-              >
-                方案 {{ result.rank }} <span>{{ result.scores.final.toFixed(2) }}</span>
-              </button>
-            </div>
-
-            <RouteCanvas :result="selectedResult" :selected-stop-id="selectedStop?.poi_id ?? null" @select-stop="handleSelectStop" />
-            <FeedbackPanel :result="selectedResult" :session-id="currentRoute.session_id" @submit-feedback="handleFeedback" />
-          </template>
-        </section>
       </section>
 
       <div class="composer-dock">
@@ -500,7 +523,7 @@ watch(
           <button class="context-toggle" type="button" @click="useDefaults = !useDefaults">{{ useDefaults ? '已启用' : '未启用' }}</button>
           <button class="context-settings" type="button" @click="preferencesOpen = true">调整</button>
         </div>
-        <RoutePlanner :is-loading="loading" @submit="handleSubmit" />
+        <RoutePlanner :is-loading="loading || locating" @submit="handleSubmit" />
       </div>
     </main>
 
@@ -518,9 +541,9 @@ watch(
 
       <div class="settings-form" :class="{ muted: !useDefaults }">
         <label>
-          常用区域
+          位置范围
           <select v-model="defaultDistrict" :disabled="!useDefaults">
-            <option>黄浦区</option><option>徐汇区</option><option>静安区</option><option>浦东新区</option>
+            <option>跟随当前位置</option>
           </select>
         </label>
         <label>
@@ -555,28 +578,28 @@ watch(
 </template>
 
 <style scoped>
-:global(*) { box-sizing: border-box; }
+:global(*) { box-sizing: border-box; letter-spacing: 0 !important; }
 :global(html), :global(body), :global(#app) { height: 100%; }
-:global(body) { margin: 0; min-width: 320px; overflow: hidden; background: #f1f8f3; color: #18362a; font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif; }
+:global(body) { margin: 0; min-width: 320px; overflow: hidden; background: #f3f5f4; color: #25332d; font-family: "Microsoft YaHei", "微软雅黑", sans-serif; }
 :global(button), :global(input), :global(select), :global(textarea) { font: inherit; }
 
-.agent-shell { height: 100dvh; min-height: 0; display: grid; grid-template-columns: 272px minmax(0, 1fr) 292px; overflow: hidden; background: #f1f8f3; }
+.agent-shell { height: 100dvh; min-height: 0; display: grid; grid-template-columns: 272px minmax(0, 1fr) 292px; overflow: hidden; background: #f3f5f4; }
 .history-rail, .settings-rail { min-height: 0; height: 100%; overflow-y: auto; background: #ffffff; border-color: #dcebe1; }
 .history-rail { display: flex; flex-direction: column; padding: 24px 16px 18px; border-right: 1px solid #dcebe1; }
 .settings-rail { padding: 28px 22px; border-left: 1px solid #dcebe1; }
 .brand-lockup { display: flex; gap: 10px; align-items: center; padding: 0 6px 24px; }
-.brand-mark, .avatar { display: inline-flex; align-items: center; justify-content: center; background: #167b59; color: #fff; font-family: Georgia, serif; font-weight: 700; }
-.brand-mark { width: 32px; height: 32px; border-radius: 8px; font-size: 18px; }
+.brand-mark, .avatar { display: inline-flex; align-items: center; justify-content: center; background: #167b59; color: #fff; font-family: "Microsoft YaHei", "微软雅黑", sans-serif; font-weight: 700; }
+.brand-mark { width: 32px; height: 32px; border-radius: 10px; font-size: 18px; }
 .brand-lockup strong { display: block; font-size: 17px; letter-spacing: .02em; }
 .brand-lockup span { display: block; margin-top: 2px; color: #749184; font-size: 12px; }
-.new-session { width: 100%; padding: 10px 12px; border: 1px solid #167b59; border-radius: 7px; background: #167b59; color: #fff; cursor: pointer; font-weight: 700; }
+.new-session { width: 100%; padding: 10px 12px; border: 1px solid #167b59; border-radius: 10px; background: #167b59; color: #fff; cursor: pointer; font-weight: 700; }
 .new-session:hover { background: #0e6748; }
-.rail-session-delete { width: 100%; margin-top: 7px; padding: 7px 10px; border: 1px solid #ebcbc6; border-radius: 6px; background: transparent; color: #9c4a43; cursor: pointer; font-size: 12px; text-align: left; }.rail-session-delete:hover { border-color: #cc8b83; background: #fff6f4; color: #82352f; }.rail-session-delete:disabled { cursor: not-allowed; opacity: .45; }
+.rail-session-delete { width: 100%; margin-top: 7px; padding: 8px 10px; border: 1px solid #ead6d1; border-radius: 10px; background: #fffafa; color: #9c4a43; cursor: pointer; font-size: 12px; text-align: left; }.rail-session-delete:hover { border-color: #cc8b83; background: #fff3f1; color: #82352f; }.rail-session-delete:disabled { cursor: not-allowed; opacity: .45; }
 .rail-heading { display: flex; justify-content: space-between; align-items: center; margin: 28px 6px 10px; color: #608071; font-size: 12px; font-weight: 700; letter-spacing: .06em; }
 .count { display: inline-flex; min-width: 20px; justify-content: center; padding: 2px 6px; border-radius: 999px; background: #e8f4ec; color: #177657; }
 .session-list { display: grid; gap: 5px; overflow-y: auto; }
-.session-item { width: 100%; display: grid; gap: 5px; padding: 11px 10px; text-align: left; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #24483a; cursor: pointer; }
-.session-item:hover, .session-item.selected { background: #edf8f0; border-color: #cce7d4; }
+.session-item { width: 100%; display: grid; gap: 5px; padding: 11px 10px; text-align: left; border: 1px solid transparent; border-radius: 10px; background: transparent; color: #2f3e37; cursor: pointer; }
+.session-item:hover, .session-item.selected { background: #f1f7f3; border-color: #d2e4d8; }
 .session-item strong, .session-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-item strong { font-size: 13px; }
 .session-item span { color: #6e8b7d; font-size: 12px; }
@@ -590,28 +613,28 @@ watch(
 .conversation-workspace { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 0 32px; }
 .workspace-header { position: relative; z-index: 1; flex: 0 0 auto; min-height: 96px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #dcebe1; background: #f1f8f3; }
 .eyebrow { margin: 0 0 6px; color: #4a9171; font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-.workspace-header h1, .settings-header h2, .reply-summary h2 { margin: 0; font-family: Georgia, "Noto Serif SC", serif; font-weight: 600; }
+.workspace-header h1, .settings-header h2, .reply-summary h2 { margin: 0; font-family: "Microsoft YaHei", "微软雅黑", sans-serif; font-weight: 700; }
 .workspace-header h1 { font-size: 23px; }
 .title-row { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .title-edit { padding: 3px 0; border: 0; background: transparent; color: #398364; font-size: 12px; cursor: pointer; }
 .title-edit:hover { color: #135e42; text-decoration: underline; }
-.title-input { width: min(360px, 58vw); padding: 2px 0 4px; border: 0; border-bottom: 1px solid #57a77d; background: transparent; color: #18362a; font-family: Georgia, "Noto Serif SC", serif; font-size: 23px; font-weight: 600; outline: none; }
+.title-input { width: min(360px, 58vw); padding: 7px 10px; border: 1px solid #b9d7c4; border-radius: 10px; background: #fff; color: #25332d; font-family: "Microsoft YaHei", "微软雅黑", sans-serif; font-size: 20px; font-weight: 700; outline: none; box-shadow: 0 0 0 3px rgba(39, 130, 91, .08); }
 .header-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }.session-state { display: flex; align-items: center; gap: 9px; color: #5e7f70; font-size: 13px; }.console-trigger, .console-rail-button { border: 1px solid #bedfca; border-radius: 6px; background: #fff; color: #276a4c; cursor: pointer; font-size: 12px; }.console-trigger { padding: 7px 9px; }.console-trigger:hover, .console-rail-button:hover { border-color: #167b59; background: #edf8f0; }.console-rail-button { width: 100%; margin-top: 12px; padding: 8px 10px; text-align: left; }
 .conversation-thread { width: min(100%, 850px); min-height: 0; flex: 1 1 auto; margin: 0 auto; overflow-y: auto; overscroll-behavior: contain; padding: 34px 0; scroll-behavior: smooth; }
 .message { display: flex; gap: 11px; margin-bottom: 20px; }
 .assistant-message { max-width: 82%; }
 .user-message { justify-content: flex-end; }
 .avatar { flex: 0 0 30px; height: 30px; border-radius: 50%; font-size: 14px; }
-.message-bubble { max-width: 100%; padding: 12px 14px; border: 1px solid #dcebe1; border-radius: 8px; background: #fff; color: #2d4c3e; line-height: 1.65; }
-.user-message .message-bubble { max-width: 72%; border-color: #bfe1c9; background: #dff4e5; }
+.message-bubble { max-width: 100%; padding: 12px 14px; border: 1px solid #d9e1dc; border-radius: 12px; background: #fff; color: #34423b; line-height: 1.65; box-shadow: 0 3px 12px rgba(37, 51, 45, .04); }
+.user-message .message-bubble { max-width: 72%; border-color: #caddeb; background: #edf5fb; color: #2f4658; }
 .message-bubble p { margin: 0; }
 .message-name { margin-bottom: 4px !important; color: #729083; font-size: 11px; }
 .welcome-message .message-bubble { padding: 15px 17px; }
-.assistant-progress { margin: 18px 0; padding: 16px; border: 1px solid #cfe8d7; border-radius: 8px; background: #f9fdf9; }
+.assistant-progress { margin: 18px 0; padding: 16px; border: 1px solid #d8e3dc; border-radius: 12px; background: #fbfcfb; }
 .progress-copy { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
 .progress-copy strong, .progress-copy span { display: block; }
 .progress-copy strong { font-size: 14px; }.progress-copy span { margin-top: 3px; color: #739184; font-size: 12px; }
-.error-state { margin: 16px 0; padding: 11px 13px; border-left: 3px solid #d3675d; background: #fff7f5; color: #9c443d; font-size: 13px; }
+.error-state { margin: 16px 0; padding: 11px 13px; border: 1px solid #edcbc5; border-radius: 10px; background: #fff7f5; color: #9c443d; font-size: 13px; }
 .route-response { margin-top: 24px; }
 .reply-summary { padding: 20px 0; border-top: 1px solid #dcebe1; border-bottom: 1px solid #dcebe1; }
 .reply-summary h2 { font-size: 24px; }.reply-summary > p:not(.eyebrow) { margin: 9px 0 0; color: #537265; line-height: 1.65; }
@@ -619,26 +642,26 @@ watch(
 .reply-summary li::before { content: '•'; margin-right: 8px; color: #2a9567; }
 .assumption-strip { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin: 18px 0; color: #547366; font-size: 12px; }
 .assumption-strip strong { margin-right: 4px; color: #2b5946; }.assumption-strip span { padding: 5px 8px; border-radius: 999px; background: #e9f6ed; }
-.degraded-notice, .diff-strip { margin: 16px 0; padding: 10px 12px; border-radius: 7px; font-size: 13px; }
+.degraded-notice, .diff-strip { margin: 16px 0; padding: 10px 12px; border-radius: 10px; font-size: 13px; }
 .degraded-notice { background: #fff8e8; color: #906b22; border: 1px solid #f0dc9f; }.diff-strip { background: #eef8f1; color: #317255; }
 .suggestion-row, .route-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-.suggestion-row button, .route-tabs button { border: 1px solid #c8e4d1; border-radius: 7px; padding: 7px 10px; background: #fff; color: #2a694d; cursor: pointer; font-size: 13px; }
+.suggestion-row button, .route-tabs button { border: 1px solid #cfded4; border-radius: 10px; padding: 7px 10px; background: #fff; color: #35624e; cursor: pointer; font-size: 13px; }
 .suggestion-row button:hover, .route-tabs button.active { border-color: #16805a; background: #e9f7ed; color: #116b4a; }
 .route-tabs button span { margin-left: 5px; color: #6d8f7e; font-size: 11px; }.result-layout { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(270px, .95fr); gap: 14px; margin-top: 20px; }
 .composer-dock { position: relative; z-index: 1; flex: 0 0 auto; width: min(100%, 850px); margin: auto; padding: 14px 0 20px; background: #f1f8f3; }
 
 .settings-header { margin-bottom: 22px; }.settings-header h2 { font-size: 19px; }.setting-switch { display: flex; justify-content: space-between; gap: 10px; padding: 13px 0; border-top: 1px solid #e0eee4; border-bottom: 1px solid #e0eee4; cursor: pointer; }.setting-switch strong, .setting-switch small { display: block; }.setting-switch strong { font-size: 13px; }.setting-switch small { margin-top: 4px; color: #829c90; font-size: 11px; line-height: 1.45; }.setting-switch input { width: 34px; accent-color: #167b59; }
-.settings-form { display: grid; gap: 14px; padding-top: 18px; transition: opacity .2s; }.settings-form.muted { opacity: .45; }.settings-form label, .profile-setting { display: grid; gap: 7px; color: #567768; font-size: 12px; font-weight: 700; }.settings-form select, .profile-setting input { width: 100%; padding: 9px 10px; border: 1px solid #cfe4d6; border-radius: 6px; background: #fbfefc; color: #28523e; outline: none; }.settings-form select:focus, .profile-setting input:focus { border-color: #3b9b70; box-shadow: 0 0 0 3px #e6f5ea; }.settings-divider { height: 1px; margin: 24px 0 18px; background: #e0eee4; }.session-card { display: grid; gap: 7px; margin-top: 26px; padding: 13px; border: 1px solid #d9ebdf; border-radius: 7px; background: #f7fcf8; }.session-card span, .session-card small { color: #789387; font-size: 11px; }.session-card strong { font-family: ui-monospace, monospace; color: #29664b; font-size: 13px; }
+.settings-form { display: grid; gap: 14px; padding-top: 18px; transition: opacity .2s; }.settings-form.muted { opacity: .45; }.settings-form label, .profile-setting { display: grid; gap: 7px; color: #567768; font-size: 12px; font-weight: 700; }.settings-form select, .profile-setting input { width: 100%; padding: 9px 10px; border: 1px solid #cfe4d6; border-radius: 6px; background: #fbfefc; color: #28523e; outline: none; }.settings-form select:focus, .profile-setting input:focus { border-color: #3b9b70; box-shadow: 0 0 0 3px #e6f5ea; }.settings-divider { height: 1px; margin: 24px 0 18px; background: #e0eee4; }.session-card { display: grid; gap: 7px; margin-top: 26px; padding: 13px; border: 1px solid #d9ebdf; border-radius: 7px; background: #f7fcf8; }.session-card span, .session-card small { color: #789387; font-size: 11px; }.session-card strong { font-family: "Microsoft YaHei", "微软雅黑", sans-serif; color: #29664b; font-size: 13px; }
 
 @media (max-width: 1180px) { .agent-shell { grid-template-columns: 236px minmax(0, 1fr); }.settings-rail { display: none; }.conversation-workspace { padding: 0 24px; } }
-@media (max-width: 760px) { :global(body) { overflow: auto; }.agent-shell { height: auto; min-height: 100dvh; display: block; overflow: visible; }.history-rail { min-height: auto; height: auto; padding: 16px; overflow: visible; border-right: 0; border-bottom: 1px solid #dcebe1; }.brand-lockup { padding-bottom: 14px; }.new-session { width: auto; }.rail-heading { margin-top: 18px; }.session-list { grid-auto-flow: column; grid-auto-columns: minmax(190px, 72%); overflow-x: auto; }.rail-footer { display: none; }.conversation-workspace { height: 100dvh; padding: 0 16px; }.workspace-header { min-height: 76px; }.workspace-header h1 { font-size: 19px; }.conversation-thread { padding-top: 22px; }.assistant-message, .user-message .message-bubble { max-width: 88%; }.result-layout { grid-template-columns: 1fr; }.composer-dock { padding-bottom: 14px; } }
+@media (max-width: 760px) { :global(body) { overflow: hidden; }.agent-shell { height: 100dvh; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }.history-rail { min-height: 0; height: auto; max-height: 188px; flex: 0 0 auto; padding: 12px 14px 9px; overflow: hidden; border-right: 0; border-bottom: 1px solid #dcebe1; }.brand-lockup { padding: 0 0 9px; }.new-session { width: 100%; padding: 8px 10px; }.rail-heading { margin: 10px 6px 6px; }.session-list { grid-auto-flow: column; grid-auto-columns: minmax(176px, 66%); overflow-x: auto; padding-bottom: 2px; }.session-item { gap: 3px; padding: 7px 9px; }.session-item span { display: none; }.rail-footer { display: none; }.conversation-workspace { min-height: 0; height: auto; flex: 1 1 auto; padding: 0 16px; }.workspace-header { min-height: 68px; }.workspace-header h1 { font-size: 19px; }.conversation-thread { padding-top: 18px; }.assistant-message, .user-message .message-bubble { max-width: 88%; }.result-layout { grid-template-columns: 1fr; }.composer-dock { padding-bottom: 10px; } }
 /* Planning workspace overrides. The results canvas carries the primary visual weight. */
-.agent-shell { grid-template-columns: 240px minmax(0, 1fr); background: #f5f7f4; }
+.agent-shell { grid-template-columns: 240px minmax(0, 1fr); background: #f3f5f4; }
 .history-rail { padding: 22px 14px 16px; background: #fcfdfb; }
 .conversation-workspace { padding: 0 28px; }
-.workspace-header { min-height: 82px; background: #f5f7f4; }
+.workspace-header { min-height: 82px; background: #f3f5f4; }
 .conversation-thread { width: min(100%, 1040px); padding: 26px 0 34px; }
-.composer-dock { width: min(100%, 1040px); padding: 8px 0 18px; background: #f5f7f4; }
+.composer-dock { width: min(100%, 1040px); padding: 8px 0 18px; background: #f3f5f4; }
 .message { margin-bottom: 15px; }
 .message-bubble { border-color: #d5e1d8; box-shadow: none; }
 .assistant-progress { margin: 16px 0; padding: 0; border: 0; background: transparent; }
@@ -650,13 +673,16 @@ watch(
 .route-tabs { margin: 15px 0; }
 .planning-context { display:flex;align-items:center;gap:6px;min-height:31px;padding:0 1px 7px;overflow-x:auto;color:#71897e;white-space:nowrap; }
 .planning-context>span { margin-right:3px;color:#789087;font-size:11px;font-weight:700; }
-.planning-context button { padding:4px 7px;border:1px solid #d5e3d9;border-radius:4px;background:#fff;color:#426959;font-size:11px;cursor:pointer; }
+.planning-context button { padding:5px 8px;border:1px solid #d5dfd8;border-radius:9px;background:#fff;color:#426959;font-size:11px;cursor:pointer; }
 .planning-context .context-toggle { margin-left:auto;border-color:#b5d4c0;color:#247252; }
 .planning-context .context-settings { color:#8a5c2b; }
 .planning-context.inactive button:not(.context-toggle):not(.context-settings) { opacity:.45; }
-.settings-rail { position:fixed;z-index:30;top:0;right:0;width:min(330px,100vw);height:100dvh;padding-top:56px;overflow-y:auto;border-left:1px solid #d5e3d9;box-shadow:-18px 0 42px rgba(29,57,43,.16);transform:translateX(105%);transition:transform .2s ease;background:#fff; }
+.settings-rail { position:fixed;z-index:30;top:0;right:0;width:min(330px,100vw);height:100dvh;padding-top:56px;overflow-y:auto;border-left:1px solid #d5e3d9;border-radius:16px 0 0 16px;box-shadow:-18px 0 42px rgba(29,57,43,.16);transform:translateX(105%);transition:transform .2s ease;background:#fff; }
 .settings-rail.open { transform:translateX(0); }
-.close-preferences { position:absolute;top:17px;right:18px;padding:5px 8px;border:1px solid #cbdcd1;border-radius:4px;background:#fff;color:#2b7051;font-size:12px;cursor:pointer; }
+.close-preferences { position:absolute;top:17px;right:18px;padding:6px 9px;border:1px solid #cbdcd1;border-radius:9px;background:#fff;color:#2b7051;font-size:12px;cursor:pointer; }
 @media (max-width: 1180px) { .agent-shell { grid-template-columns: 220px minmax(0, 1fr); } }
 @media (max-width: 760px) { .conversation-workspace { padding:0 14px; }.workspace-header{min-height:68px}.workspace-header h1{max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.session-state{display:none}.header-actions{gap:7px}.console-trigger{padding:6px 7px;font-size:11px}.conversation-thread{padding:18px 0 24px}.composer-dock{padding-bottom:12px}.planning-context{padding-top:5px}.planning-context>span{display:none}.planning-context .context-settings{display:inline-block}.settings-rail{width:100vw}.route-response{margin-top:18px} }
+.console-trigger, .console-rail-button, .settings-form select, .profile-setting input, .workspace-switch select { border-radius: 10px; }
+.session-card { border-radius: 12px; background: #fafcfb; }
+.session-card strong { font-family: "Microsoft YaHei", "微软雅黑", sans-serif; }
 </style>

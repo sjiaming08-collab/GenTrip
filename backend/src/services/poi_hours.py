@@ -94,3 +94,29 @@ def is_open_during(
             if start >= open_minute + offset and end <= close_minute + offset:
                 return True
     return False
+
+
+def next_opening_start(
+    opening_hours: object,
+    earliest_minute: int,
+    required_duration_min: int,
+    *,
+    weekday: int | None = None,
+) -> int | None:
+    """Return the earliest same-day start that can fit the requested visit."""
+    if not isinstance(opening_hours, list) or not opening_intervals(opening_hours):
+        return earliest_minute
+    candidates: list[int] = []
+    for item in opening_hours:
+        if not isinstance(item, dict) or not _matches_day(item.get("days"), weekday):
+            continue
+        open_minute = parse_hhmm(item.get("open"))
+        close_minute = parse_hhmm(item.get("close"))
+        if open_minute is None or close_minute is None or open_minute == close_minute:
+            continue
+        if close_minute < open_minute:
+            close_minute += 24 * 60
+        start = max(earliest_minute, open_minute)
+        if start + max(0, required_duration_min) <= close_minute:
+            candidates.append(start)
+    return min(candidates) if candidates else None

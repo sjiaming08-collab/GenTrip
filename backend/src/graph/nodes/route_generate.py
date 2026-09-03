@@ -3,18 +3,29 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from datetime import datetime
 
-from ...models.route import RoutePlan, RouteStop, ScoredPoi
-from ...services.travel_time import mock_travel_estimator, travel_time_service
-from ...services.poi_hours import is_open_during, weekday_from_date
+from ...config import settings
+from ...models.blueprint import ItineraryBlueprint
+from ...models.route import RouteLeg, RoutePlan, RouteStop, ScoredPoi
+from ...services.travel_time import mock_travel_estimator
+from ...services.planner_tools import TravelMatrixTool
+from ...services.poi_hours import is_open_during, next_opening_start, weekday_from_date
+from ...services.constraint_rules import (
+    derive_minimum_poi_count,
+    positive_domain_query,
+    should_enforce_poi_count,
+)
 from ..state import GraphState, phase_update
 
 BUCKET_LIMIT = 6
 BEAM_WIDTH = 4
+BLUEPRINT_BEAM_WIDTH = 12
 MAX_SKELETONS = 3
 MAX_ROUTES = 5
+MAX_ROUTE_STOPS = 8
 DEFAULT_START_MINUTE = 10 * 60
 
 DINING_CATEGORIES = {"本帮菜", "火锅", "小吃快餐", "西餐", "日料", "咖啡", "甜品", "酒吧", "川菜", "粤菜", "烧烤"}
@@ -56,12 +67,52 @@ class BeamCandidate:
     score: float
 
 
+@dataclass(frozen=True)
+class ScheduledBeam:
+    pois: tuple[ScoredPoi, ...]
+    legs: tuple[RouteLeg, ...]
+    start_minute: int
+    cursor_minute: int
+    estimated_cost_per_person: int
+    score: float
+
+
 @dataclass
 class GenerationStats:
     used_fallback: bool = False
     pruned_by_time: int = 0
     pruned_by_budget: int = 0
     pruned_by_queue: int = 0
+
+
+def _select_blueprint_beams(
+    candidates: list[BeamCandidate],
+    limit: int = BLUEPRINT_BEAM_WIDTH,
+) -> list[BeamCandidate]:
+    """Keep high-scoring beams without discarding all compact alternatives."""
+    ranked = sorted(
+        candidates,
+        key=lambda item: (-item.score, tuple(poi.poi_id for poi in item.pois)),
+    )
+    selected: list[BeamCandidate] = []
+    selected_ids: set[int] = set()
+    seen_counts: set[int] = set()
+    for item in ranked:
+        count = len(item.pois)
+        if count in seen_counts:
+            continue
+        selected.append(item)
+        selected_ids.add(id(item))
+        seen_counts.add(count)
+        if len(selected) >= limit:
+            return selected
+    for item in ranked:
+        if id(item) in selected_ids:
+            continue
+        selected.append(item)
+        if len(selected) >= limit:
+            break
+    return selected
 
 
 def _domain_of_poi(poi: ScoredPoi) -> str:
@@ -74,13 +125,28 @@ def _domain_of_poi(poi: ScoredPoi) -> str:
     return "sightseeing"
 
 
-def _visit_duration(poi: ScoredPoi) -> int:
+def _visit_duration(poi: ScoredPoi, cap_minutes: int | None = None) -> int:
+    if poi.slot_duration_minutes:
+        base = int(poi.slot_duration_minutes)
+        return min(base, cap_minutes) if cap_minutes is not None else base
     domain = _domain_of_poi(poi)
     if poi.category in SHORT_STAY_CATEGORIES:
-        return 45
-    if domain == "dining":
-        return 75
-    return 60
+        base = 45
+    elif domain == "dining":
+        base = 75
+    else:
+        base = 60
+    return min(base, cap_minutes) if cap_minutes is not None else base
+
+
+def _dense_visit_cap(poi_count: int, time_budget_minutes: int | None) -> int | None:
+    """Reserve travel and queue time before distributing dense-plan visit time."""
+    if poi_count < 4 or not time_budget_minutes:
+        return None
+    travel_reserve = max(0, poi_count - 1) * 10
+    queue_reserve = poi_count * 5
+    available = int(time_budget_minutes) - travel_reserve - queue_reserve
+    return max(40, available // poi_count)
 
 
 def _queue_wait_min(poi: ScoredPoi) -> int:
@@ -139,7 +205,15 @@ def _group_pois(pois: list[ScoredPoi]) -> dict[str, list[ScoredPoi]]:
         ranked = sorted(items, key=_poi_quality, reverse=True)
         pinned = [poi for poi in ranked if "match:name_exact" in poi.tags]
         regular = [poi for poi in ranked if "match:name_exact" not in poi.tags]
-        buckets[key] = pinned + regular[: max(0, BUCKET_LIMIT - len(pinned))]
+        representatives: list[ScoredPoi] = []
+        represented_categories: set[str] = set()
+        for poi in regular:
+            if poi.category not in represented_categories:
+                representatives.append(poi)
+                represented_categories.add(poi.category)
+        buckets[key] = _dedupe_pois_by_name(
+            pinned + representatives + regular
+        )[: BUCKET_LIMIT * 2]
     return buckets
 
 
@@ -156,6 +230,7 @@ def _slot(domain: str, categories: tuple[str, ...] = (), note: str | None = None
 
 
 def _mentioned_categories(query: str) -> list[str]:
+    query = positive_domain_query(query)
     hits: list[tuple[int, str]] = []
     for needle, category in CATEGORY_ALIASES:
         pos = query.find(needle)
@@ -169,54 +244,159 @@ def _mentioned_categories(query: str) -> list[str]:
     return ordered
 
 
+def _explicit_mixed_skeleton(domains: list[str], categories: list[str], query: str) -> list[SlotHint]:
+    """Keep explicit cuisine slots while preserving the user's activity order."""
+    first_positions = {
+        "dining": min((query.find(category) for category in categories if category in query), default=len(query)),
+        "sightseeing": min(
+            (query.find(term) for term in ("看展", "艺术展", "画廊", "艺术空间", "展览", "散步", "公园", "景点", "博物馆", "观光", "打卡") if term in query),
+            default=len(query),
+        ),
+        "shopping": min(
+            (query.find(term) for term in ("逛街", "商场", "购物", "书店", "买手店", "古着") if term in query),
+            default=len(query),
+        ),
+        "leisure": min(
+            (
+                query.find(term)
+                for term in (
+                    "按摩", "足疗", "推拿", "美容", "美甲", "健身", "攀岩",
+                    "游泳", "羽毛球", "电玩", "桌游", "演出", "电影院", "KTV",
+                    "亲子", "儿童乐园",
+                )
+                if term in query
+            ),
+            default=len(query),
+        ),
+    }
+    ordered_domains = sorted(domains, key=lambda domain: (first_positions.get(domain, len(query)), domains.index(domain)))
+    slots: list[SlotHint] = []
+    for domain in ordered_domains:
+        if domain == "dining":
+            if len(categories) > 1 and "或" in query:
+                slots.append(_slot("dining", tuple(categories), "或".join(categories)))
+            else:
+                slots.extend(_slot("dining", (category,), category) for category in categories)
+        elif domain == "sightseeing" and any(term in query for term in ("看展", "展览", "博物馆", "美术馆")):
+            category = "博物馆" if any(term in query for term in ("展览", "博物馆", "美术馆")) else "文化艺术"
+            slots.append(_slot("sightseeing", (category,), category))
+        else:
+            slots.append(_slot(domain))
+    return slots
+
+
 def _trim_skeleton(items: list[SlotHint], poi_count: int) -> list[SlotHint]:
-    target = max(1, min(poi_count, 3))
+    target = max(1, min(poi_count, MAX_ROUTE_STOPS))
     return items[:target]
 
 
-def _route_skeletons(domains: list[str], poi_count: int, query: str = "") -> list[list[SlotHint]]:
+def _has_explicit_activity_count(query: str) -> bool:
+    return bool(re.search(r"(?:\d{1,2}|[一二两三四五六七八九十]+)\s*个?\s*(?:活动|地点|景点|去处|项目|站)", query))
+
+
+def _alternating_slots(first: str, second: str, target: int) -> list[SlotHint]:
+    return [_slot(first if index % 2 == 0 else second) for index in range(target)]
+
+
+def _pad_explicit_skeleton(
+    skeleton: list[SlotHint],
+    domains: list[str],
+    poi_count: int,
+    query: str,
+    *,
+    enforce_target: bool = False,
+) -> list[SlotHint]:
+    if not enforce_target and not _has_explicit_activity_count(query):
+        return skeleton
+    target = max(1, min(poi_count, MAX_ROUTE_STOPS))
+    padded = list(skeleton)
+    cursor = 0
+    while len(padded) < target:
+        domain = domains[cursor % len(domains)] if domains else "sightseeing"
+        padded.append(_slot(domain))
+        cursor += 1
+    return padded
+
+
+def _route_skeletons(
+    domains: list[str],
+    poi_count: int,
+    query: str = "",
+    *,
+    minimum_stop_count: int | None = None,
+) -> list[list[SlotHint]]:
     domain_set = set(domains)
     skeletons: list[list[SlotHint]] = []
     mentioned_categories = _mentioned_categories(query)
+    enforce_target = should_enforce_poi_count(query)
+    compact_target = max(
+        1,
+        min(
+            int(minimum_stop_count or min(poi_count, 2)),
+            poi_count,
+            MAX_ROUTE_STOPS,
+        ),
+    )
 
     if mentioned_categories and "dining" in domain_set:
         explicit_slots = [_slot("dining", (category,), category) for category in mentioned_categories]
-        skeletons.append(explicit_slots)
+        explicit_skeleton = (
+            _explicit_mixed_skeleton(domains, mentioned_categories, query)
+            if len(domain_set) > 1
+            else explicit_slots
+        )
+        skeletons.append(
+            _pad_explicit_skeleton(
+                explicit_skeleton,
+                domains,
+                poi_count,
+                query,
+                enforce_target=enforce_target,
+            )
+        )
 
     if {"dining", "sightseeing"}.issubset(domain_set):
-        skeletons.extend(
-            [
-                [_slot("sightseeing"), _slot("dining"), _slot("sightseeing")],
-                [_slot("dining"), _slot("sightseeing"), _slot("dining")],
-                [_slot("sightseeing"), _slot("dining")],
-            ]
-        )
+        target = max(2, min(poi_count, MAX_ROUTE_STOPS))
+        skeletons.append(_alternating_slots("sightseeing", "dining", target))
+        if not enforce_target:
+            skeletons.append(_alternating_slots("sightseeing", "dining", compact_target))
+        skeletons.append(_alternating_slots("dining", "sightseeing", target))
     elif {"shopping", "dining"}.issubset(domain_set):
-        skeletons.extend(
-            [
-                [_slot("shopping"), _slot("dining"), _slot("shopping")],
-                [_slot("dining"), _slot("shopping")],
-                [_slot("shopping"), _slot("dining")],
-            ]
-        )
+        target = max(2, min(poi_count, MAX_ROUTE_STOPS))
+        skeletons.append(_alternating_slots("shopping", "dining", target))
+        if not enforce_target:
+            skeletons.append(_alternating_slots("shopping", "dining", compact_target))
+        skeletons.append(_alternating_slots("dining", "shopping", target))
     elif domains == ["dining"]:
-        target = max(1, min(poi_count, 2))
-        skeletons.extend([[_slot("dining") for _ in range(target)], [_slot("dining")]])
+        target = max(1, min(poi_count, MAX_ROUTE_STOPS))
+        skeletons.append([_slot("dining") for _ in range(target)])
+        if not enforce_target:
+            skeletons.append([_slot("dining") for _ in range(compact_target)])
     elif domains == ["sightseeing"]:
-        skeletons.extend(
-            [
-                [_slot("sightseeing") for _ in range(max(1, min(poi_count, 3)))],
-                [_slot("sightseeing") for _ in range(max(1, min(poi_count, 2)))],
-            ]
+        skeletons.append(
+            [_slot("sightseeing") for _ in range(max(1, min(poi_count, MAX_ROUTE_STOPS)))]
         )
+        if not enforce_target:
+            skeletons.append(
+                [_slot("sightseeing") for _ in range(compact_target)]
+            )
     elif domains == ["shopping"]:
-        skeletons.extend([[_slot("shopping") for _ in range(max(1, min(poi_count, 2)))], [_slot("shopping")]])
+        skeletons.append(
+            [_slot("shopping") for _ in range(max(1, min(poi_count, MAX_ROUTE_STOPS)))]
+        )
+        if not enforce_target:
+            skeletons.append([_slot("shopping") for _ in range(compact_target)])
     else:
         mixed: list[SlotHint] = []
-        target = max(1, min(poi_count, 3))
+        target = max(1, min(poi_count, MAX_ROUTE_STOPS))
         while len(mixed) < target:
             mixed.extend(_slot(domain) for domain in domains)
-        skeletons.extend([mixed[:target], [_slot(domain) for domain in domains[: min(len(domains), target)]]])
+        skeletons.append(mixed[:target])
+        if not enforce_target:
+            compact: list[SlotHint] = []
+            while len(compact) < compact_target:
+                compact.extend(_slot(domain) for domain in domains)
+            skeletons.append(compact[:compact_target])
 
     deduped: list[list[SlotHint]] = []
     for skeleton in skeletons:
@@ -253,12 +433,13 @@ def _extend_beam(
     poi: ScoredPoi,
     *,
     budget_per_person: int,
+    visit_duration_cap: int | None,
 ) -> BeamCandidate:
     prev = beam.pois[-1] if beam.pois else None
     travel = _travel_time_min(prev, poi)
     next_pois = (*beam.pois, poi)
     queue_wait = _queue_wait_min(poi)
-    duration = beam.duration_min + travel + queue_wait + _visit_duration(poi)
+    duration = beam.duration_min + travel + queue_wait + _visit_duration(poi, visit_duration_cap)
     cost = _avg_cost(next_pois)
 
     travel_penalty = travel / 60
@@ -283,6 +464,8 @@ def _generate_for_skeleton(
     budget_per_person: int,
     time_budget_minutes: int | None,
     queue_tolerance_minutes: int | None,
+    visit_duration_cap: int | None,
+    require_complete: bool = False,
 ) -> tuple[list[BeamCandidate], GenerationStats]:
     beams = [BeamCandidate(pois=(), duration_min=0, estimated_cost_per_person=0, score=0.0)]
     stats = GenerationStats()
@@ -303,7 +486,12 @@ def _generate_for_skeleton(
                 if queue_tolerance_minutes is not None and _queue_wait_min(poi) > queue_tolerance_minutes:
                     stats.pruned_by_queue += 1
                     continue
-                expanded = _extend_beam(beam, poi, budget_per_person=budget_per_person)
+                expanded = _extend_beam(
+                    beam,
+                    poi,
+                    budget_per_person=budget_per_person,
+                    visit_duration_cap=visit_duration_cap,
+                )
                 if max_duration and expanded.duration_min > max_duration:
                     stats.pruned_by_time += 1
                     continue
@@ -316,6 +504,8 @@ def _generate_for_skeleton(
             break
         beams = sorted(next_beams, key=lambda item: item.score, reverse=True)[:BEAM_WIDTH]
 
+    if require_complete:
+        return [beam for beam in beams if len(beam.pois) == len(skeleton)], stats
     return [beam for beam in beams if beam.pois], stats
 
 
@@ -421,23 +611,54 @@ async def _build_route(
     pois: tuple[ScoredPoi, ...],
     *,
     start_minute: int,
+    visit_duration_cap: int | None = None,
+    weekday: int | None = None,
+    budget_per_person: int = 0,
+    mobility_preferences: list[str] | None = None,
+    blueprint_id: str | None = None,
+    style: str | None = None,
+    precomputed_legs: tuple[RouteLeg, ...] | None = None,
+    wait_for_first_opening: bool = False,
 ) -> RoutePlan:
     stops: list[RouteStop] = []
+    legs: list[RouteLeg] = []
     cursor_min = start_minute
     prev: ScoredPoi | None = None
 
     for idx, poi in enumerate(pois, start=1):
-        estimate = await travel_time_service.estimate(
-            prev.lat,
-            prev.lng,
-            poi.lat,
-            poi.lng,
-            mode="walking",
-        ) if prev else None
-        travel = estimate.duration_min if estimate else 0
-        arrival = cursor_min + travel
+        leg = (
+            precomputed_legs[idx - 2]
+            if prev and precomputed_legs is not None and idx - 2 < len(precomputed_legs)
+            else (
+                await TravelMatrixTool().select_leg(
+                    prev,
+                    poi,
+                    budget_per_person=budget_per_person,
+                    mobility_preferences=mobility_preferences,
+                ) if prev else None
+            )
+        )
+        if leg:
+            legs.append(leg)
+        travel = leg.duration_min if leg else 0
+        physical_arrival = cursor_min + travel
         queue_wait = _queue_wait_min(poi)
-        visit_duration = _visit_duration(poi)
+        visit_duration = _visit_duration(poi, visit_duration_cap)
+        opening_start = (
+            next_opening_start(
+                poi.opening_hours,
+                physical_arrival,
+                queue_wait + visit_duration,
+                weekday=weekday,
+            )
+            if idx > 1 or wait_for_first_opening
+            else physical_arrival
+        )
+        arrival = opening_start if opening_start is not None else physical_arrival
+        slot_window = poi.slot_time_window or {}
+        slot_start = _parse_hhmm(slot_window.get("start"))
+        if slot_start is not None:
+            arrival = max(arrival, slot_start)
         departure = arrival + queue_wait + visit_duration
         stops.append(
             RouteStop(
@@ -449,15 +670,19 @@ async def _build_route(
                 departure_time=_format_time(departure),
                 visit_duration_min=visit_duration,
                 travel_time_from_prev_min=travel,
-                travel_source=estimate.source if estimate else "origin",
-                travel_estimated=estimate.estimated if estimate else True,
-                travel_time_lower_bound_min=estimate.min_duration_min if estimate else 0,
-                travel_time_upper_bound_min=estimate.max_duration_min if estimate else 0,
-                travel_confidence=estimate.confidence if estimate else "high",
+                travel_source=leg.source if leg else "origin",
+                travel_estimated=leg.estimated if leg else True,
+                travel_time_lower_bound_min=(max(1, int(leg.duration_min * 0.75)) if leg else 0),
+                travel_time_upper_bound_min=(max(leg.duration_min, int(leg.duration_min * 1.4)) if leg else 0),
+                travel_confidence=leg.confidence if leg else "high",
                 queue_wait_min=queue_wait,
                 opening_hours_text=poi.opening_hours_text,
                 lat=poi.lat,
                 lng=poi.lng,
+                slot_id=poi.slot_id,
+                slot_role=poi.slot_role,
+                slot_source=poi.slot_source,
+                slot_time_window=poi.slot_time_window,
             )
         )
         cursor_min = departure
@@ -468,7 +693,10 @@ async def _build_route(
         summary=summary,
         stops=stops,
         total_duration_min=cursor_min - start_minute,
-        estimated_cost_per_person=_avg_cost(pois),
+        estimated_cost_per_person=_avg_cost(pois) + sum(leg.cost_per_person for leg in legs),
+        legs=legs,
+        blueprint_id=blueprint_id,
+        style=style,
     )
 
 
@@ -490,6 +718,36 @@ def _route_is_open(route: RoutePlan, pois: tuple[ScoredPoi, ...], weekday: int |
     return True
 
 
+def _route_respects_blueprint_window(
+    route: RoutePlan,
+    blueprint: ItineraryBlueprint,
+    constraints: dict,
+) -> bool:
+    """Reject schedules that the shared validator would reject later."""
+    route_end = _parse_hhmm(route.stops[-1].departure_time) if route.stops else None
+    blueprint_end = _parse_hhmm(blueprint.return_by)
+    if (
+        constraints.get("return_by")
+        and route_end is not None
+        and blueprint_end is not None
+        and route_end > blueprint_end
+    ):
+        return False
+    for stop in route.stops:
+        arrival = _parse_hhmm(stop.arrival_time)
+        departure = _parse_hhmm(stop.departure_time)
+        slot_window = stop.slot_time_window or {}
+        window_start = _parse_hhmm(slot_window.get("start"))
+        window_end = _parse_hhmm(slot_window.get("end"))
+        if arrival is None or departure is None:
+            return False
+        if window_start is not None and arrival < window_start:
+            return False
+        if window_end is not None and departure > window_end:
+            return False
+    return True
+
+
 def _candidate_start_minutes(
     state: GraphState,
     constraints: dict,
@@ -498,7 +756,17 @@ def _candidate_start_minutes(
 ) -> list[int]:
     """Try POI opening times only when the user did not fix the schedule."""
     query = str(constraints.get("raw_query") or state.get("user_query") or "")
-    if constraints.get("start_at") or constraints.get("return_by") or any(word in query for word in ("现在", "马上", "立刻")):
+    explicit_clock = re.search(
+        r"(?:上午|早上|中午|下午|午后|晚上|夜间)?\s*(?:从|在)?\s*"
+        r"(?:\d{1,2}|[一二两三四五六七八九十]+)\s*"
+        r"(?:点(?:\s*(?:半|\d{1,2}\s*分?))?|:\d{2})",
+        query,
+    )
+    period_mention = re.search(r"上午|早上|中午|下午|午后|晚上|夜间", query)
+    start_at_is_hard = bool(constraints.get("start_at")) and not (period_mention and not explicit_clock)
+    if explicit_clock or start_at_is_hard or constraints.get("return_by") or any(
+        word in query for word in ("现在", "马上", "立刻")
+    ):
         return [base_start]
 
     starts = [base_start]
@@ -519,6 +787,234 @@ def _slot_to_dict(slot: SlotHint) -> dict:
     }
 
 
+async def _generate_from_activity_blueprints(
+    state: GraphState,
+    constraints: dict,
+    all_pois: list[ScoredPoi],
+) -> tuple[list[RoutePlan], dict, GenerationStats]:
+    """Search exact slots while carrying absolute time and real travel legs."""
+
+    by_slot = {
+        slot_id: [ScoredPoi.model_validate(item) for item in items[:4]]
+        for slot_id, items in (state.get("candidate_pois_by_slot") or {}).items()
+    }
+    blueprints = [
+        ItineraryBlueprint.model_validate(item)
+        for item in state.get("activity_blueprints") or []
+    ]
+    stats = GenerationStats()
+    routes: list[RoutePlan] = []
+    missing_required: list[str] = []
+    weekday = weekday_from_date(state.get("input_ts"))
+    time_budget = constraints.get("time_budget_minutes")
+    schedule_envelope = constraints.get("schedule_envelope") or {}
+    max_duration = int(
+        schedule_envelope.get("max_duration_minutes")
+        or time_budget
+        or 12 * 60
+    )
+    target_duration = int(
+        schedule_envelope.get("target_duration_minutes")
+        or time_budget
+        or max_duration
+    )
+    budget = int(constraints.get("budget_per_person") or 0)
+    compiled_atoms = (state.get("compiled_constraints") or {}).get("atoms") or []
+    budget_hard = any(
+        item.get("field") == "budget_per_person" and item.get("strength") == "hard"
+        for item in compiled_atoms
+    )
+    leg_cache: dict[tuple[str, str], RouteLeg] = {}
+    failures: list[dict] = []
+
+    for blueprint in blueprints:
+        visit_slot_count = sum(slot.role != "rest" for slot in blueprint.slots)
+        visit_duration_cap = _dense_visit_cap(visit_slot_count, time_budget)
+        start_minute = _parse_hhmm(blueprint.start_at) or DEFAULT_START_MINUTE
+        beams = [ScheduledBeam(
+            pois=(),
+            legs=(),
+            start_minute=start_minute,
+            cursor_minute=start_minute,
+            estimated_cost_per_person=0,
+            score=0.0,
+        )]
+        failed = False
+        for slot in blueprint.slots:
+            if slot.role == "rest":
+                continue
+            pool = by_slot.get(slot.slot_id) or []
+            if not pool:
+                if slot.required:
+                    missing_required.append(slot.slot_id)
+                    failed = True
+                    break
+                continue
+            next_beams: list[ScheduledBeam] = list(beams) if not slot.required else []
+            for beam in beams:
+                used_ids = {poi.poi_id for poi in beam.pois}
+                used_names = {_normalized_poi_name(poi.name) for poi in beam.pois}
+                for poi in pool:
+                    if poi.poi_id in used_ids or _normalized_poi_name(poi.name) in used_names:
+                        continue
+                    queue_tolerance = constraints.get("queue_tolerance_minutes")
+                    if queue_tolerance is not None and _queue_wait_min(poi) > int(queue_tolerance):
+                        stats.pruned_by_queue += 1
+                        continue
+                    prev = beam.pois[-1] if beam.pois else None
+                    leg = None
+                    if prev is not None:
+                        key = (prev.poi_id, poi.poi_id)
+                        leg = leg_cache.get(key)
+                        if leg is None:
+                            leg = await TravelMatrixTool().select_leg(
+                                prev,
+                                poi,
+                                budget_per_person=budget,
+                                mobility_preferences=constraints.get("mobility_preferences") or [],
+                            )
+                            leg_cache[key] = leg
+                    travel = leg.duration_min if leg else 0
+                    physical_arrival = beam.cursor_minute + travel
+                    queue_wait = _queue_wait_min(poi)
+                    visit_duration = _visit_duration(poi, visit_duration_cap)
+                    opening_start = next_opening_start(
+                        poi.opening_hours,
+                        physical_arrival,
+                        queue_wait + visit_duration,
+                        weekday=weekday,
+                    )
+                    if opening_start is None:
+                        continue
+                    arrival = opening_start
+                    slot_window = poi.slot_time_window or {}
+                    window_start = _parse_hhmm(slot_window.get("start"))
+                    window_end = _parse_hhmm(slot_window.get("end"))
+                    if window_start is not None:
+                        arrival = max(arrival, window_start)
+                    departure = arrival + queue_wait + visit_duration
+                    if window_end is not None and departure > window_end:
+                        stats.pruned_by_time += 1
+                        continue
+                    elapsed = departure - beam.start_minute
+                    if elapsed > max_duration:
+                        stats.pruned_by_time += 1
+                        continue
+                    next_pois = (*beam.pois, poi)
+                    next_legs = (*beam.legs, leg) if leg else beam.legs
+                    next_cost = _avg_cost(next_pois) + sum(item.cost_per_person for item in next_legs)
+                    if budget_hard and budget > 0 and next_cost > budget:
+                        stats.pruned_by_budget += 1
+                        continue
+                    travel_penalty = travel / 60
+                    budget_penalty = max(0.0, next_cost - budget) / max(budget, 1) if budget else 0.0
+                    score = beam.score + _poi_quality(poi) - travel_penalty - budget_penalty
+                    if slot.requirement_level == "policy":
+                        score += 0.4
+                    next_beams.append(ScheduledBeam(
+                        pois=next_pois,
+                        legs=next_legs,
+                        start_minute=beam.start_minute,
+                        cursor_minute=departure,
+                        estimated_cost_per_person=next_cost,
+                        score=score,
+                    ))
+            if not next_beams:
+                if slot.required:
+                    missing_required.append(slot.slot_id)
+                    failures.append({
+                        "failure_type": "temporal_conflict",
+                        "slot_id": slot.slot_id,
+                        "candidate_count": len(pool),
+                        "blocking_constraints": ["time_or_opening_or_budget"],
+                    })
+                    failed = True
+                break
+            ranked = sorted(
+                next_beams,
+                key=lambda item: (
+                    -item.score,
+                    abs((item.cursor_minute - item.start_minute) - target_duration),
+                    tuple(poi.poi_id for poi in item.pois),
+                ),
+            )
+            beams = ranked[:BLUEPRINT_BEAM_WIDTH]
+        if failed:
+            continue
+
+        for beam in sorted(
+            beams,
+            key=lambda item: (
+                -item.score,
+                abs((item.cursor_minute - item.start_minute) - target_duration),
+                tuple(poi.poi_id for poi in item.pois),
+            ),
+        ):
+            if not beam.pois:
+                continue
+            route = await _build_route(
+                name=f"{_route_area_name(state, constraints)}·{'均衡' if blueprint.style == 'balanced' else '体验'}路线",
+                summary=f"{len(beam.pois)} 站 · {_format_time(beam.start_minute)} 出发 · 人均约 {beam.estimated_cost_per_person} 元",
+                pois=beam.pois,
+                start_minute=beam.start_minute,
+                visit_duration_cap=visit_duration_cap,
+                weekday=weekday,
+                budget_per_person=budget,
+                mobility_preferences=constraints.get("mobility_preferences") or [],
+                blueprint_id=blueprint.blueprint_id,
+                style=blueprint.style,
+                precomputed_legs=beam.legs,
+                wait_for_first_opening=True,
+            )
+            if route.total_duration_min > max_duration:
+                stats.pruned_by_time += 1
+                continue
+            if budget_hard and budget > 0 and route.estimated_cost_per_person > budget:
+                stats.pruned_by_budget += 1
+                continue
+            if not _route_respects_blueprint_window(route, blueprint, constraints):
+                stats.pruned_by_time += 1
+                continue
+            if not _route_is_open(route, beam.pois, weekday):
+                continue
+            routes.append(route)
+            break
+        if len(routes) >= 2:
+            break
+
+    return routes, {
+        "mode": "activity_blueprint",
+        "blueprint_count": len(blueprints),
+        "candidate_count": len(all_pois),
+        "candidate_counts_by_slot": {
+            slot_id: len(items) for slot_id, items in by_slot.items()
+        },
+        "generation_top_k_per_slot": 4,
+        "missing_required_slots": list(dict.fromkeys(missing_required)),
+        "target_stop_count": max((len(item.stops) for item in routes), default=0),
+        "minimum_stop_count": int(constraints.get("anchor_count_explicit") or 0),
+        "target_stop_count_enforced": bool(constraints.get("anchor_count_explicit")),
+        "pruned_by_time": stats.pruned_by_time,
+        "pruned_by_budget": stats.pruned_by_budget,
+        "pruned_by_queue": stats.pruned_by_queue,
+        "used_fallback": stats.used_fallback,
+        "planning_failures": failures,
+        "travel_matrix_edge_count": len(leg_cache),
+        "budget_hard": budget_hard,
+        "visit_duration_cap_min": min(
+            (
+                _dense_visit_cap(
+                    sum(slot.role != "rest" for slot in blueprint.slots),
+                    time_budget,
+                )
+                for blueprint in blueprints
+            ),
+            default=None,
+            key=lambda value: value if value is not None else 10**9,
+        ),
+    }, stats
+
+
 async def route_generate(state: GraphState) -> dict:
     constraints = state["constraints"]
     assert constraints is not None
@@ -532,6 +1028,52 @@ async def route_generate(state: GraphState) -> dict:
             route_generation_meta={"candidate_count": 0, "skeletons": []},
         )
 
+    if (
+        settings.joint_route_solver_enabled
+        and state.get("activity_blueprints")
+        and state.get("candidate_pois_by_slot")
+    ):
+        routes, route_generation_meta, generation_stats = await _generate_from_activity_blueprints(
+            state, constraints, all_pois
+        )
+        travel_sources = {
+            leg.source for route in routes for leg in route.legs
+        }
+        fallback_used = any(leg.fallback_used for route in routes for leg in route.legs)
+        estimated_count = sum(leg.estimated for route in routes for leg in route.legs)
+        leg_count = sum(len(route.legs) for route in routes)
+        update = phase_update(
+            "route_generate",
+            summary=f"generated {len(routes)} blueprint routes",
+            candidate_routes=[route.model_dump(mode="json") for route in routes],
+            route_generation_meta={
+                **route_generation_meta,
+                "travel_leg_count": leg_count,
+                "estimated_travel_leg_count": estimated_count,
+                "real_travel_leg_count": leg_count - estimated_count,
+            },
+            tool_calls=[{
+                "operation": "travel_time",
+                "status": "fallback" if fallback_used else "success",
+                "source": ",".join(sorted(travel_sources)) or "none",
+                "tool": "TravelMatrixTool",
+                "estimated": bool(estimated_count),
+                "fallback_used": fallback_used,
+                "call_count": route_generation_meta.get("travel_matrix_edge_count", leg_count),
+            }],
+            degraded=bool(state.get("degraded")) or bool(route_generation_meta["missing_required_slots"]),
+            planning_failures=route_generation_meta.get("planning_failures") or [],
+        )
+        update["phase_log"][0].update({
+            "route_count": len(routes),
+            "travel_leg_count": leg_count,
+            "estimated_travel_leg_count": estimated_count,
+            "missing_required_slots": route_generation_meta["missing_required_slots"],
+        })
+        if generation_stats.used_fallback:
+            update["relaxed_constraints"] = ["route_generate_bucket_relaxed"]
+        return update
+
     ranked_pois = sorted(all_pois, key=_poi_quality, reverse=True)
     pinned_pois = [poi for poi in ranked_pois if "match:name_exact" in poi.tags]
     regular_pois = [poi for poi in ranked_pois if "match:name_exact" not in poi.tags]
@@ -541,7 +1083,20 @@ async def route_generate(state: GraphState) -> dict:
     domains = _ordered_domains(constraints.get("domains"))
     poi_count = max(1, int(constraints.get("poi_count") or 3))
     query = str(constraints.get("raw_query") or state.get("user_query") or "")
-    skeletons = _route_skeletons(domains, poi_count, query)
+    enforce_target = should_enforce_poi_count(query)
+    minimum_stop_count = derive_minimum_poi_count(
+        query,
+        constraints.get("time_budget_minutes"),
+        target_count=poi_count,
+        domains=domains,
+    )
+    skeletons = _route_skeletons(
+        domains,
+        poi_count,
+        query,
+        minimum_stop_count=minimum_stop_count,
+    )
+    visit_duration_cap = _dense_visit_cap(poi_count, constraints.get("time_budget_minutes"))
     start_minute = _derive_start_minute(state, constraints, skeletons)
     late_nearby_default = _uses_late_nearby_default(state, constraints)
 
@@ -555,6 +1110,8 @@ async def route_generate(state: GraphState) -> dict:
             budget_per_person=int(constraints["budget_per_person"]),
             time_budget_minutes=constraints.get("time_budget_minutes"),
             queue_tolerance_minutes=constraints.get("queue_tolerance_minutes"),
+            visit_duration_cap=visit_duration_cap,
+            require_complete=enforce_target,
         )
         if any(slot.categories for slot in skeleton):
             generated = [
@@ -578,7 +1135,7 @@ async def route_generate(state: GraphState) -> dict:
         candidates = [
             BeamCandidate(
                 pois=fallback_pois,
-                duration_min=sum(_visit_duration(poi) + _queue_wait_min(poi) for poi in fallback_pois),
+                duration_min=sum(_visit_duration(poi, visit_duration_cap) + _queue_wait_min(poi) for poi in fallback_pois),
                 estimated_cost_per_person=_avg_cost(fallback_pois),
                 score=sum(_poi_quality(poi) for poi in fallback_pois),
             )
@@ -594,6 +1151,7 @@ async def route_generate(state: GraphState) -> dict:
     routes: list[RoutePlan] = []
     pruned_by_hours = 0
     route_start_minutes: list[int] = []
+    weekday = weekday_from_date(state.get("input_ts"))
     for candidate in unique.values():
         for candidate_start in _candidate_start_minutes(state, constraints, candidate.pois, start_minute):
             route = await _build_route(
@@ -601,12 +1159,14 @@ async def route_generate(state: GraphState) -> dict:
                 summary=f"{len(candidate.pois)} 站 · {_format_time(candidate_start)} 出发 · 人均约 {candidate.estimated_cost_per_person} 元",
                 pois=candidate.pois,
                 start_minute=candidate_start,
+                visit_duration_cap=visit_duration_cap,
+                weekday=weekday,
             )
             time_budget = constraints.get("time_budget_minutes")
             if time_budget is not None and route.total_duration_min > int(time_budget):
                 generation_stats.pruned_by_time += 1
-                break
-            if not _route_is_open(route, candidate.pois, weekday_from_date(state.get("input_ts"))):
+                continue
+            if not _route_is_open(route, candidate.pois, weekday):
                 pruned_by_hours += 1
                 continue
             routes.append(route)
@@ -620,6 +1180,9 @@ async def route_generate(state: GraphState) -> dict:
 
     route_generation_meta = {
         "candidate_count": len(all_pois),
+        "target_stop_count": min(poi_count, MAX_ROUTE_STOPS),
+        "target_stop_count_enforced": enforce_target,
+        "minimum_stop_count": min(minimum_stop_count, MAX_ROUTE_STOPS),
         "bucket_counts": {domain: len(items) for domain, items in buckets.items()},
         "skeletons": [[_slot_to_dict(slot) for slot in skeleton] for skeleton in skeletons],
         "start_time": _format_time(effective_start),
@@ -629,6 +1192,7 @@ async def route_generate(state: GraphState) -> dict:
         "pruned_by_queue": generation_stats.pruned_by_queue,
         "pruned_by_hours": pruned_by_hours,
         "used_fallback": generation_stats.used_fallback,
+        "visit_duration_cap_min": visit_duration_cap,
     }
 
     travel_sources = {stop.travel_source for route in routes for stop in route.stops if stop.travel_source != "origin"}

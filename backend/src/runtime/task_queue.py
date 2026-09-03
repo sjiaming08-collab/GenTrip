@@ -163,6 +163,27 @@ class RedisPlanTaskQueue:
         finally:
             await client.aclose()
 
+    async def touch(self, consumer: str, message_id: str) -> bool:
+        """Refresh a pending delivery so another worker cannot reclaim active work."""
+        try:
+            client = self._client()
+            try:
+                claimed = await client.xclaim(
+                    self.stream,
+                    self.group,
+                    consumer,
+                    min_idle_time=0,
+                    message_ids=[message_id],
+                    justid=True,
+                )
+            finally:
+                await client.aclose()
+        except QueueUnavailable:
+            raise
+        except Exception as exc:
+            raise QueueUnavailable("unable to heartbeat plan queue message") from exc
+        return message_id in {str(item) for item in claimed or []}
+
     async def handle_failure(self, message: QueuedPlanRun, error: str) -> QueueFailureResult:
         """Record a failed attempt and atomically move exhausted work to the DLQ."""
         try:

@@ -6,7 +6,6 @@ from ..graph.state import GraphState
 from ..models.constraints import IntentDomain
 from ..models.retrieval import DomainSpec, RetrievalFilters, RetrievalPlan
 from .constraint_rules import (
-    DEFAULT_DISTRICT,
     detect_district,
     detect_preferred_cuisines,
     positive_domain_query,
@@ -18,12 +17,12 @@ _SIGHTSEEING_CATEGORY_KEYWORDS: list[tuple[str, list[str]]] = [
     ("公园", ["公园", "绿地"]),
     ("观光", ["外滩", "观光", "打卡"]),
     ("文化", ["文化", "历史"]),
-    ("文化艺术", ["艺术展", "画廊", "艺术空间", "文化中心"]),
+    ("文化艺术", ["看展", "艺术展", "画廊", "艺术空间", "文化中心"]),
 ]
 
 _DINING_TRIGGER = ("吃", "餐", "美食", "饭", "料理", "逛吃", "聚餐", "宴请", "午餐", "晚餐")
-_SIGHTSEEING_TRIGGER = ("逛", "玩", "游", "观光", "打卡", "展览", "博物馆", "公园", "景点", "逛逛")
-_SHOPPING_TRIGGER = ("买", "购物", "逛街买", "商场")
+_SIGHTSEEING_TRIGGER = ("逛", "玩", "游", "观光", "打卡", "看展", "展览", "博物馆", "公园", "景点", "逛逛", "散步", "步道")
+_SHOPPING_TRIGGER = ("买", "购物", "逛街", "商场", "百货", "书店", "买手店", "古着")
 _LEISURE_CATEGORY_KEYWORDS: list[tuple[str, list[str]]] = [
     ("按摩足疗", ["按摩", "足疗", "推拿", "SPA", "采耳"]),
     ("美容美体", ["美容", "美甲", "美发", "护肤"]),
@@ -34,6 +33,35 @@ _LEISURE_CATEGORY_KEYWORDS: list[tuple[str, list[str]]] = [
 ]
 _LEISURE_TRIGGER = tuple(keyword for _, keywords in _LEISURE_CATEGORY_KEYWORDS for keyword in keywords)
 _GENERIC_MEAL_TRIGGER = ("吃饭", "吃东西", "吃点东西", "美食", "用餐", "正餐")
+
+
+def order_domains_for_query(
+    domains: list[IntentDomain],
+    query: str,
+) -> list[IntentDomain]:
+    """Order requested domains by their first positive mention in the query."""
+
+    positive = positive_domain_query(query)
+    keywords = {
+        IntentDomain.DINING: _DINING_TRIGGER,
+        IntentDomain.SIGHTSEEING: tuple(
+            term for term in _SIGHTSEEING_TRIGGER if term not in {"逛", "玩", "游", "逛逛"}
+        ),
+        IntentDomain.SHOPPING: _SHOPPING_TRIGGER,
+        IntentDomain.LEISURE: _LEISURE_TRIGGER,
+    }
+
+    def first_position(domain: IntentDomain) -> int:
+        positions = [positive.find(term) for term in keywords[domain] if term in positive]
+        if not positions and domain == IntentDomain.SIGHTSEEING:
+            positions = [
+                positive.find(term)
+                for term in ("逛", "玩", "游", "逛逛")
+                if term in positive
+            ]
+        return min(positions) if positions else len(positive)
+
+    return sorted(domains, key=lambda domain: (first_position(domain), domains.index(domain)))
 
 
 def _meal_categories_for_generic_query(query: str, cuisines: list[str] | None) -> list[str] | None:
@@ -105,7 +133,7 @@ def _leisure_from_query(query: str) -> DomainSpec | None:
     return DomainSpec(domain=IntentDomain.LEISURE, categories=_detect_leisure_categories(query))
 
 
-def _domain_specs_from_constraints(constraints: dict, query: str) -> list[DomainSpec]:
+def domain_specs_from_constraints(constraints: dict, query: str) -> list[DomainSpec]:
     """将 constraint_extract 输出的 domains 转为 DomainSpec。"""
     preferred = constraints.get("preferred_cuisines") or detect_preferred_cuisines(query)
     activity_tags = constraints.get("activity_tags") or []
@@ -142,10 +170,12 @@ def _dedupe_domains(domains: list[DomainSpec]) -> list[DomainSpec]:
             continue
         merged_cats = _merge_categories(existing.categories, spec.categories)
         merged_names = list(dict.fromkeys(existing.poi_names + spec.poi_names))
+        merged_keywords = list(dict.fromkeys(existing.search_keywords + spec.search_keywords))
         by_domain[spec.domain] = DomainSpec(
             domain=spec.domain,
             categories=merged_cats,
             poi_names=merged_names,
+            search_keywords=merged_keywords,
         )
     return list(by_domain.values())
 
@@ -168,6 +198,7 @@ def _filters_from_geo_scope(geo_scope: dict | None, constraints: dict, query: st
     budget = constraints.get("budget_per_person")
     if geo_scope:
         return RetrievalFilters(
+            city=geo_scope.get("city") or constraints.get("city"),
             district=geo_scope.get("district"),
             business_area=geo_scope.get("business_area"),
             center_lat=geo_scope.get("center_lat"),
@@ -179,7 +210,8 @@ def _filters_from_geo_scope(geo_scope: dict | None, constraints: dict, query: st
         )
 
     return RetrievalFilters(
-        district=constraints.get("district") or detect_district(query) or DEFAULT_DISTRICT,
+        city=constraints.get("city"),
+        district=constraints.get("district") or detect_district(query),
         budget_per_person=budget,
         excluded_categories=constraints.get("excluded_categories") or [],
     )
@@ -191,7 +223,7 @@ def parse_retrieval_plan(state: GraphState) -> RetrievalPlan:
     filters = _filters_from_geo_scope(state.get("geo_scope"), constraints, query)
 
     if constraints.get("domains"):
-        domains = _domain_specs_from_constraints(constraints, query)
+        domains = domain_specs_from_constraints(constraints, query)
     else:
         domains = list(filter(None, [
             _dining_from_query(query),

@@ -21,15 +21,13 @@ const emit = defineEmits<{
       </span>
       <span class="time-row">
         {{ stop.arrival_time }} - {{ stop.departure_time }}
-        <span v-if="stop.travel_time_from_prev_min > 0">
-          · 路上 {{ stop.travel_time_from_prev_min }} 分钟<span v-if="stop.travel_estimated">（估算）</span>
-        </span>
       </span>
       <span class="meta-row">
         停留 {{ stop.visit_duration_min }} 分钟
         <template v-if="stop.queue_wait_min > 0"> · 预计排队 {{ stop.queue_wait_min }} 分钟</template>
       </span>
       <span v-if="stop.opening_hours_text" class="hours-row">营业时间：{{ stop.opening_hours_text }}</span>
+      <span v-if="stop.slot_source === 'policy'" class="policy-row">根据全天行程自动加入</span>
     </span>
   </button>
 </template>
@@ -42,18 +40,20 @@ const emit = defineEmits<{
   gap: 0.75rem;
   padding: 0.85rem;
   border: 1px solid #dcebe1;
-  border-radius: 8px;
+  border-radius: 12px;
   margin-bottom: 0.6rem;
   background: #fff;
   color: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  box-shadow: 0 2px 10px rgba(38, 50, 44, .04);
+  transition: border-color 0.2s, box-shadow 0.2s, transform .2s;
 }
 .poi-card:hover,
 .poi-card.current {
   border-color: #238862;
   box-shadow: 0 4px 12px rgba(31, 112, 76, 0.11);
+  transform: translateY(-1px);
 }
 .sequence {
   width: 1.75rem;
@@ -94,5 +94,13 @@ const emit = defineEmits<{
   color: #8a6a31;
   font-size: 0.79rem;
   line-height: 1.45;
+}
+.policy-row {
+  width: fit-content;
+  padding: 0.12rem 0.48rem;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #506c9c;
+  font-size: 0.74rem;
 }
 </style>

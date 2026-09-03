@@ -18,6 +18,9 @@ class RuntimeMetrics:
             self._duration_sum_seconds: Counter[str] = Counter()
             self._token_usage: Counter[str] = Counter()
             self._bundle_search: Counter[str] = Counter()
+            self._llm_calls: Counter[tuple[str, str, str]] = Counter()
+            self._tool_calls: Counter[tuple[str, str]] = Counter()
+            self._phases: Counter[tuple[str, str]] = Counter()
 
     def record_run(self, state: dict[str, Any], status: str, duration_seconds: float) -> None:
         with self._lock:
@@ -25,12 +28,26 @@ class RuntimeMetrics:
             self._runs[(status, path)] += 1
             self._duration_sum_seconds[status] += max(0.0, duration_seconds)
             for call in state.get("llm_calls") or []:
+                self._llm_calls[(
+                    str(call.get("operation") or "unknown"),
+                    str(call.get("status") or "unknown"),
+                    str(call.get("error_code") or "none"),
+                )] += 1
                 self._token_usage["prompt"] += int(call.get("prompt_tokens") or 0)
                 self._token_usage["completion"] += int(call.get("completion_tokens") or 0)
                 self._token_usage["total"] += int(call.get("total_tokens") or 0)
             for call in state.get("tool_calls") or []:
+                self._tool_calls[(
+                    str(call.get("operation") or "unknown"),
+                    str(call.get("status") or "unknown"),
+                )] += 1
                 if call.get("operation") == "route_bundle_search":
                     self._bundle_search["hit" if call.get("cache_hit") else "miss"] += 1
+            for phase in state.get("phase_log") or []:
+                self._phases[(
+                    str(phase.get("phase") or "unknown"),
+                    str(phase.get("status") or "unknown"),
+                )] += 1
 
     @staticmethod
     def _label(**labels: str) -> str:
@@ -41,6 +58,10 @@ class RuntimeMetrics:
             runs = snapshot.get("runs", self._runs) if snapshot else self._runs
             duration_sum = snapshot.get("duration_seconds", self._duration_sum_seconds) if snapshot else self._duration_sum_seconds
             token_usage = snapshot.get("token_usage", self._token_usage) if snapshot else self._token_usage
+            bundle_search = snapshot.get("bundle_search", self._bundle_search) if snapshot else self._bundle_search
+            llm_calls = snapshot.get("llm_calls", self._llm_calls) if snapshot else self._llm_calls
+            tool_calls = snapshot.get("tool_calls", self._tool_calls) if snapshot else self._tool_calls
+            phases = snapshot.get("phases", self._phases) if snapshot else self._phases
             lines = [
                 "# HELP gentrip_plan_runs_total Completed plan runs by result and path.",
                 "# TYPE gentrip_plan_runs_total counter",
@@ -63,8 +84,26 @@ class RuntimeMetrics:
                 "# HELP gentrip_route_bundle_search_total RouteBundle cache searches by outcome.",
                 "# TYPE gentrip_route_bundle_search_total counter",
             ])
-            for outcome, value in sorted(self._bundle_search.items()):
+            for outcome, value in sorted(bundle_search.items()):
                 lines.append(f"gentrip_route_bundle_search_total{{{self._label(outcome=outcome)}}} {value}")
+            lines.extend([
+                "# HELP gentrip_llm_calls_total LLM calls by operation, status, and safe error code.",
+                "# TYPE gentrip_llm_calls_total counter",
+            ])
+            for (operation, status, error_code), value in sorted(llm_calls.items()):
+                lines.append(f"gentrip_llm_calls_total{{{self._label(operation=operation, status=status, error_code=error_code)}}} {value}")
+            lines.extend([
+                "# HELP gentrip_tool_calls_total Tool calls by operation and status.",
+                "# TYPE gentrip_tool_calls_total counter",
+            ])
+            for (operation, status), value in sorted(tool_calls.items()):
+                lines.append(f"gentrip_tool_calls_total{{{self._label(operation=operation, status=status)}}} {value}")
+            lines.extend([
+                "# HELP gentrip_plan_phases_total Completed graph phases by phase and status.",
+                "# TYPE gentrip_plan_phases_total counter",
+            ])
+            for (phase, status), value in sorted(phases.items()):
+                lines.append(f"gentrip_plan_phases_total{{{self._label(phase=phase, status=status)}}} {value}")
             return "\n".join(lines) + "\n"
 
 

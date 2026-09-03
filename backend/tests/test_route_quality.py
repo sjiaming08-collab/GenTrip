@@ -77,3 +77,33 @@ def test_rule_preference_coverage_does_not_reward_duplicate_cuisine_stops():
     ])
 
     assert _rule_scores(one_cafe, constraints, state)[2] == _rule_scores(two_cafes, constraints, state)[2]
+
+
+def test_rule_preference_favors_complete_generated_skeleton_without_explicit_cuisine():
+    constraints = {"budget_per_person": 100, "time_budget_minutes": 240, "domains": ["shopping"]}
+    state = {
+        "candidate_pois": [
+            {"poi_id": "shop-1", "rating": 4.5, "dimension": "shopping"},
+            {"poi_id": "shop-2", "rating": 4.5, "dimension": "shopping"},
+        ],
+        "route_generation_meta": {"skeletons": [[{"domain": "shopping"}, {"domain": "shopping"}]]},
+    }
+
+    def route(stops):
+        return RoutePlan.model_validate({
+            "plan_name": "shopping route",
+            "summary": "test",
+            "stops": stops,
+            "total_duration_min": 120,
+            "estimated_cost_per_person": 0,
+        })
+
+    one_stop = route([
+        {"sequence": 1, "poi_id": "shop-1", "poi_name": "Shop A", "category": "shopping", "arrival_time": "10:00", "departure_time": "11:00", "visit_duration_min": 60},
+    ])
+    two_stops = route([
+        *one_stop.model_dump()["stops"],
+        {"sequence": 2, "poi_id": "shop-2", "poi_name": "Shop B", "category": "shopping", "arrival_time": "11:15", "departure_time": "12:15", "visit_duration_min": 60},
+    ])
+
+    assert _rule_scores(two_stops, constraints, state)[2] > _rule_scores(one_stop, constraints, state)[2]

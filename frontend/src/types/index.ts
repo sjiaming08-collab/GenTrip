@@ -36,6 +36,24 @@ export interface RouteStop {
   travel_estimated?: boolean
   queue_wait_min: number
   opening_hours_text?: string | null
+  slot_id?: string | null
+  slot_role?: 'anchor' | 'meal' | 'rest' | 'optional' | null
+  slot_source?: 'explicit' | 'inferred' | 'policy' | null
+  slot_time_window?: { start?: string | null; end?: string | null } | null
+}
+
+export interface RouteLeg {
+  from_poi_id: string
+  to_poi_id: string
+  mode: 'walking' | 'cycling' | 'transit' | 'driving'
+  distance_m: number
+  duration_min: number
+  cost_per_person: number
+  source: string
+  estimated: boolean
+  confidence: 'low' | 'medium' | 'high'
+  fallback_used: boolean
+  selection_reason: string
 }
 
 export interface RoutePlan {
@@ -45,6 +63,9 @@ export interface RoutePlan {
   stops: RouteStop[]
   total_duration_min: number
   estimated_cost_per_person: number
+  legs: RouteLeg[]
+  blueprint_id?: string | null
+  style?: 'balanced' | 'experiential' | null
 }
 
 export interface RouteScores {
@@ -85,6 +106,12 @@ export interface AgentReplyMeta {
   planning_decision?: Record<string, unknown> | null
   pending_change?: Record<string, unknown> | null
   rejected_change?: Record<string, unknown> | null
+  compiled_constraints?: Record<string, unknown> | null
+  active_policies?: Record<string, unknown>[]
+  dropped_policies?: Record<string, unknown>[]
+  blueprint_feasibility?: Record<string, unknown>[]
+  planning_failures?: Record<string, unknown>[]
+  repair_actions?: Record<string, unknown>[]
 }
 
 export interface PhaseLogEntry {
@@ -123,12 +150,14 @@ export interface AgentReplyResponse {
 }
 
 export interface RoutePlanResponse extends AgentReplyResponse {
+  turn_id?: string | null
   run_status: string
   plan_path?: string | null
   assumptions: Assumption[]
   route_results: RoutePlanResult[]
   current_phase: string
   planning_outcome: string
+  diff_result?: RoutePlanDiff | null
 }
 
 // ---- Diff types for Replan ----
@@ -168,8 +197,26 @@ export interface SessionTurn {
   route_results: RoutePlanResult[]
   assumptions: Assumption[]
   presentation?: Presentation | null
+  diff_result?: RoutePlanDiff | null
   assistant_message?: string
   ts: string
+}
+
+/** Immutable route output attached to the assistant turn that produced it. */
+export interface RouteTurnSnapshot {
+  snapshot_id: string
+  turn_id?: string | null
+  run_id?: string | null
+  session_id?: string | null
+  user_query?: string
+  created_at?: string
+  reply_type: ReplyType
+  route_results: RoutePlanResult[]
+  assumptions: Assumption[]
+  presentation?: Presentation | null
+  degraded: boolean
+  next_suggested_user_moves: string[]
+  diff_change_count: number
 }
 
 export interface SessionDetail {

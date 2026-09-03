@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { RoutePlanResult, RouteStop } from '../types'
 import PoiCard from './PoiCard.vue'
+import TravelLegCard from './TravelLegCard.vue'
 
 defineProps<{
   result?: RoutePlanResult | null
@@ -26,13 +27,14 @@ const emit = defineEmits<{
       输入需求开始规划路线
     </div>
     <div v-else class="stops-list">
-      <PoiCard
-        v-for="(stop, index) in result.route.stops"
-        :key="`${result.route.plan_id}-${stop.sequence}`"
-        :stop="stop"
-        :is-current="index === currentStopIndex"
-        @click="emit('selectStop', stop)"
-      />
+      <template v-for="(stop, index) in result.route.stops" :key="`${result.route.plan_id}-${stop.sequence}`">
+        <PoiCard
+          :stop="stop"
+          :is-current="index === currentStopIndex"
+          @click="emit('selectStop', stop)"
+        />
+        <TravelLegCard v-if="result.route.legs[index]" :leg="result.route.legs[index]" />
+      </template>
     </div>
   </section>
 </template>

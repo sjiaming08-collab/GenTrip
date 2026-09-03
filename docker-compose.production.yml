@@ -1,0 +1,50 @@
+services:
+  postgres:
+    restart: unless-stopped
+  redis:
+    restart: unless-stopped
+  api:
+    restart: unless-stopped
+    environment:
+      DEBUG: "false"
+      AUTH_ENABLED: "true"
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?AUTH_JWT_SECRET must be set}
+      AUTH_COOKIE_SECURE: "true"
+      AUTH_ALLOW_REGISTRATION: ${PRODUCTION_ALLOW_REGISTRATION:-false}
+      AUTH_LOGIN_RATE_LIMIT_ENABLED: "true"
+      ALLOW_INSECURE_TENANT_ID: "false"
+  worker:
+    restart: unless-stopped
+    environment:
+      DEBUG: "false"
+      AUTH_ENABLED: "true"
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?AUTH_JWT_SECRET must be set}
+      ALLOW_INSECURE_TENANT_ID: "false"
+  prometheus:
+    restart: unless-stopped
+  otel-collector:
+    restart: unless-stopped
+  tempo:
+    restart: unless-stopped
+  grafana:
+    restart: unless-stopped
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:-localhost}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  caddy-data:
+  caddy-config:

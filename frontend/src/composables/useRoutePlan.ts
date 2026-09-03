@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { cancelPlanRun, getPlanRun, subscribeToRunEvents, subscribeToStream } from '../api'
 import type { RoutePlanRequest, RoutePlanResponse, RoutePlanResult, SSEProgressEvent } from '../types'
+import { appendRuntimeEvent, normalizeRuntimeEvents } from '../utils/runtimeEvents'
 
 const ACTIVE_RUN_STORAGE_KEY = 'gentrip-active-plan-run'
 
@@ -47,6 +48,10 @@ export function useRoutePlan() {
   const routeResults = computed(() => currentRoute.value?.route_results ?? [])
   const presentation = computed(() => currentRoute.value?.presentation ?? null)
 
+  function recordRuntimeEvent(event: SSEProgressEvent) {
+    runtimeEvents.value = appendRuntimeEvent(runtimeEvents.value, event)
+  }
+
   async function submitQuery(request: RoutePlanRequest) {
     const query = request.query.trim()
     if (!query) {
@@ -77,7 +82,7 @@ export function useRoutePlan() {
       void subscribeToStream(
         { ...request, query, idempotency_key: request.idempotency_key || crypto.randomUUID() },
         (event: SSEProgressEvent) => {
-          runtimeEvents.value = [...runtimeEvents.value, event].slice(-120)
+          recordRuntimeEvent(event)
           currentPhase.value = event.phase
           activeRunId.value = event.run_id || activeRunId.value
         },
@@ -130,13 +135,13 @@ export function useRoutePlan() {
   function restoreRoute(response: RoutePlanResponse) {
     currentRoute.value = response
     if (!runtimeEvents.value.length) {
-      runtimeEvents.value = response.meta.phase_log.map((entry) => ({
+      runtimeEvents.value = normalizeRuntimeEvents(response.meta.phase_log.map((entry) => ({
         run_id: response.run_id,
         phase: String(entry.phase || 'runtime'),
         status: entry.status,
         summary: entry.summary,
         data: { phase_log_entry: entry },
-      }))
+      })))
     }
     selectedResult.value = response.route_results[0] ?? null
     currentPhase.value = response.current_phase || 'completed'
@@ -159,13 +164,13 @@ export function useRoutePlan() {
   function applyCompletedRun(response: RoutePlanResponse) {
     currentRoute.value = response
     if (!runtimeEvents.value.length) {
-      runtimeEvents.value = response.meta.phase_log.map((entry) => ({
+      runtimeEvents.value = normalizeRuntimeEvents(response.meta.phase_log.map((entry) => ({
         run_id: response.run_id,
         phase: String(entry.phase || 'runtime'),
         status: entry.status,
         summary: entry.summary,
         data: { phase_log_entry: entry },
-      }))
+      })))
     }
     selectedResult.value = response.route_results[0] ?? null
     if (!history.value.some((item) => item.run_id === response.run_id)) history.value.unshift(response)
@@ -199,7 +204,7 @@ export function useRoutePlan() {
     source = subscribeToRunEvents(
       persisted.runId,
       (event) => {
-        runtimeEvents.value = [...runtimeEvents.value, event].slice(-120)
+        recordRuntimeEvent(event)
         currentPhase.value = event.phase
       },
       (response) => {

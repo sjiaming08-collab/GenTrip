@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, ValidationError
 from ..config import settings
 from ..models.route import Presentation, RoutePlanResult
 from .client import get_llm_client
-from .exceptions import LLMError
+from .exceptions import LLMError, failure_meta
 from .prompts.route_present import SYSTEM_PROMPT
 
 
@@ -61,7 +61,6 @@ async def llm_present_route_with_meta(
         "relaxed_constraints": relaxed_constraints,
         "evaluation_meta": evaluation_meta or {},
         "dialog_summary": (memory_context or {}).get("dialog_summary", ""),
-        "recent_turns": (memory_context or {}).get("recent_turns_brief", []),
     }
     try:
         client = get_llm_client()
@@ -75,8 +74,8 @@ async def llm_present_route_with_meta(
             raw = await client.chat_json(SYSTEM_PROMPT, json.dumps(payload, ensure_ascii=False))
             meta = {"operation": "route_present", "status": "success"}
         data = LlmPresentation.model_validate(raw)
-    except (LLMError, ValidationError):
-        return None, {"operation": "route_present", "status": "failed", "fallback_used": True}
+    except (LLMError, ValidationError) as exc:
+        return None, failure_meta("route_present", exc)
 
     title = data.title.strip()
     if not title.startswith("\u4e3a\u60a8\u63a8\u8350"):

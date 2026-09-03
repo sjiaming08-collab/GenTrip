@@ -8,6 +8,8 @@ COPY pyproject.toml ./
 COPY src ./src
 COPY migrations ./migrations
 COPY fixtures ./fixtures
+COPY scripts ./scripts
+ARG PIP_INDEX_URL
 RUN pip install --no-cache-dir .
 
 EXPOSE 8080

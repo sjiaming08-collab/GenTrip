@@ -29,3 +29,17 @@ groups:
           severity: warning
         annotations:
           summary: GenTrip LLM token usage is above the local operating threshold
+      - alert: GenTripRepeatedLLMFailures
+        expr: increase(gentrip_llm_calls_total{status="failed"}[10m]) >= 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: GenTrip LLM calls are repeatedly falling back
+      - alert: GenTripRepeatedToolFailures
+        expr: increase(gentrip_tool_calls_total{status=~"failed|fallback"}[10m]) >= 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: GenTrip planning tools are repeatedly degraded

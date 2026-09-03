@@ -118,12 +118,21 @@ class AgentReplyMetaResponse(BaseModel):
     token_usage: dict = Field(default_factory=dict)
     debug_trace_id: Optional[str] = None
     planning_decision: Optional[dict] = None
+    turn_plan: Optional[dict] = None
+    turn_context_meta: Optional[dict] = None
     pending_change: Optional[dict] = None
     rejected_change: Optional[dict] = None
+    compiled_constraints: Optional[dict] = None
+    active_policies: list[dict] = Field(default_factory=list)
+    dropped_policies: list[dict] = Field(default_factory=list)
+    blueprint_feasibility: list[dict] = Field(default_factory=list)
+    planning_failures: list[dict] = Field(default_factory=list)
+    repair_actions: list[dict] = Field(default_factory=list)
 
 
 class PlanResponse(BaseModel):
     run_id: str
+    turn_id: Optional[str] = None
     run_status: str
     plan_path: Optional[str]
     assumptions: list[dict]
@@ -133,6 +142,7 @@ class PlanResponse(BaseModel):
     session_id: Optional[str] = None
     reply_type: str = "route"
     planning_outcome: str = "pending"
+    diff_result: Optional[dict] = None
     structured: list[dict] = Field(default_factory=list)
     meta: AgentReplyMetaResponse = Field(default_factory=AgentReplyMetaResponse)
 

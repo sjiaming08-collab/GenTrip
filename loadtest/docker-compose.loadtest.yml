@@ -1,0 +1,20 @@
+services:
+  api:
+    environment:
+      AUTH_ENABLED: "false"
+      ALLOW_INSECURE_TENANT_ID: "true"
+      LLM_ENABLED: "false"
+      LLM_API_KEY: ""
+      DEEPSEEK_API_KEY: ""
+      DEEPSEEK_V4_PRO_API_KEY: ""
+      deepseek-v4-pro: ""
+
+  worker:
+    environment:
+      AUTH_ENABLED: "false"
+      ALLOW_INSECURE_TENANT_ID: "true"
+      LLM_ENABLED: "false"
+      LLM_API_KEY: ""
+      DEEPSEEK_API_KEY: ""
+      DEEPSEEK_V4_PRO_API_KEY: ""
+      deepseek-v4-pro: ""

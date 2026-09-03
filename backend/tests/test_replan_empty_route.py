@@ -23,7 +23,7 @@ async def test_replan_from_an_empty_route_falls_back_to_a_fresh_plan():
     result = await build_plan_graph().compile().ainvoke(state, {"recursion_limit": 20})
 
     assert result["run_status"] == "completed"
-    assert result["turn_mode"] == "plan"
+    assert result["turn_relation"] == "new_goal"
     assert result["planning_outcome"] == "route_ready"
     assert result["route_results"]
     for route_result in result["route_results"]:

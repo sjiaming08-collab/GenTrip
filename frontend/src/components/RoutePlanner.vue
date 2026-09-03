@@ -51,26 +51,26 @@ function applySuggestion(value: string) {
 </template>
 
 <style scoped>
-.route-planner { display: grid; gap: 8px; padding: 13px 16px 11px; border: 1px solid #c8dad0; border-radius: 8px; background: #fff; box-shadow: 0 12px 30px rgba(31, 68, 49, .10); }
+.route-planner { display: grid; gap: 10px; padding: 14px 16px 12px; border: 1px solid #d2dcd6; border-radius: 14px; background: #fff; box-shadow: 0 12px 32px rgba(38, 50, 44, .09); }
 .composer-field { display: grid; gap: 5px; }
 label { color: #54806a; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
 textarea {
   width: 100%;
   min-height: 62px;
   box-sizing: border-box;
-  padding: 0.55rem 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: #254a39;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #e0e6e2;
+  border-radius: 10px;
+  background: #f7f9f8;
+  color: #2d3c35;
   font-size: 15px;
   line-height: 1.55;
   resize: none;
 }
 .composer-field:focus-within label { color: #167b59; }
-textarea:focus { outline: none; }
+textarea:focus { border-color: #8dbba4; background: #fff; outline: none; box-shadow: 0 0 0 3px rgba(37, 130, 88, .08); }
 textarea::placeholder { color: #9bb2a5; }
-.suggestion-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:1px}.suggestion-row button{min-height:auto;padding:4px 7px;border:1px solid #d7e5db;border-radius:4px;background:#f8fbf9;color:#527366;font-size:11px;font-weight:600}.suggestion-row button:not(:disabled):hover{border-color:#72a88a;background:#edf6ef;color:#236f4e}
+.suggestion-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:1px}.suggestion-row button{min-height:auto;padding:5px 8px;border:1px solid #d9e1dc;border-radius:9px;background:#fff;color:#526960;font-size:11px;font-weight:600}.suggestion-row button:not(:disabled):hover{border-color:#72a88a;background:#edf6ef;color:#236f4e}
 .composer-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 9px; border-top: 1px solid #e5f0e8; }
 .composer-actions span { color: #80998b; font-size: 12px; }
 button {
@@ -79,7 +79,7 @@ button {
   background: #167b59;
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: 10px;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;

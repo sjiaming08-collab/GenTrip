@@ -30,15 +30,27 @@ async def validate_delta(state: GraphState) -> dict:
     reports: list[ValidationReport] = []
     feasible_routes: list[dict] = []
     operations = state.get("replan_operations") or [state.get("replan_operation") or {}]
+    original_stops = (state.get("original_route") or {}).get("stops") or []
+    proposal_strategies = {
+        str(item.get("proposal_id") or ""): str(item.get("strategy") or "")
+        for item in state.get("replan_proposals") or []
+    }
     for raw in routes:
         route = RoutePlan.model_validate(raw)
+        strategy = proposal_strategies.get(route.plan_id, "")
+        is_add_substitution = strategy.startswith(("replace_stop_", "remove_"))
+        locked_indices = (
+            state.get("explicitly_locked_stop_indices") or []
+            if is_add_substitution
+            else state.get("locked_stop_indices") or []
+        )
         judgement = judge_route(
             route,
             constraints,
             poi_hours=poi_hours,
             weekday=weekday_from_date(state.get("input_ts")),
             original_route=state.get("original_route"),
-            locked_indices=state.get("explicitly_locked_stop_indices") or [],
+            locked_indices=locked_indices,
         )
         operation_violations: list[str] = []
         route_text = " ".join(f"{stop.poi_name} {stop.category}" for stop in route.stops)
@@ -51,6 +63,16 @@ async def validate_delta(state: GraphState) -> dict:
             ) if requested else True
             if item.get("type") in {"add", "replace"} and not request_satisfied:
                 operation_violations.append(f"本次修改未加入用户要求的 {requested}")
+            if (
+                item.get("type") == "add"
+                and len(route.stops) < len(original_stops) + 1
+                and not is_add_substitution
+            ):
+                operation_violations.append("新增操作没有增加路线站点")
+            if item.get("type") == "replace" and len(route.stops) != len(original_stops):
+                operation_violations.append("替换操作改变了路线站点数量")
+            if item.get("type") == "delete" and len(route.stops) >= len(original_stops):
+                operation_violations.append("删除操作没有减少路线站点")
             if item.get("type") == "delete" and target and target in route_text:
                 operation_violations.append(f"本次修改未移除用户排除的 {target}")
         violations_for_report = list(dict.fromkeys(judgement.hard_violations + operation_violations))

@@ -10,7 +10,9 @@ from .api.container import plan_service
 from .api.routes import router
 from .api.sse import router as sse_router
 from .config import settings
+from .llm.client import close_llm_client
 from .observability.tracing import instrument_fastapi
+from .services.amap_poi_provider import close_amap_poi_provider
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,13 +25,17 @@ logging.getLogger("gentrip.graph").setLevel(logging.INFO)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await plan_service.initialize()
-    yield
+    try:
+        yield
+    finally:
+        await close_amap_poi_provider()
+        await close_llm_client()
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
-        description="GenTrip API — Step A cold path",
+        description="GenTrip local Beta planning runtime",
         version="0.1.0",
         lifespan=lifespan,
     )

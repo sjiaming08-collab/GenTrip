@@ -55,6 +55,10 @@ def _candidate_stop(candidate: dict) -> dict:
         "queue_wait_min": int(candidate.get("queue_wait_min") or 0),
         "lat": candidate.get("lat"),
         "lng": candidate.get("lng"),
+        "slot_id": candidate.get("slot_id"),
+        "slot_role": candidate.get("slot_role"),
+        "slot_source": candidate.get("slot_source"),
+        "slot_time_window": candidate.get("slot_time_window"),
     }
 
 
@@ -133,7 +137,7 @@ def _build_route(original: dict, stops: list[dict], strategy: str, candidates: l
 
 def _operation_candidates(candidates: list[dict], operation_index: int, operation_count: int) -> list[dict]:
     scoped = [item for item in candidates if int(item.get("_replan_operation_index", 0)) == operation_index]
-    return (scoped or candidates if operation_count == 1 else scoped)[:3]
+    return (scoped or candidates if operation_count == 1 else scoped)[:6]
 
 
 def _direct_candidate_variants(operations: list[dict], candidates: list[dict]) -> list[tuple[str, list[dict]]]:
@@ -156,8 +160,14 @@ def _apply_operations(base: list[dict], operations: list[dict], candidates: list
         scoped = _operation_candidates(candidates, operation_index, len(operations))
         candidate = scoped[0] if scoped else None
         if op_type == "delete":
+            target_slot_id = str(operation.get("target_slot_id") or "")
             category = str(operation.get("target_category") or "")
-            if category:
+            if target_slot_id:
+                stops = [
+                    stop for stop in stops
+                    if str(stop.get("slot_id") or "") != target_slot_id
+                ]
+            elif category:
                 stops = [
                     stop for stop in stops
                     if category not in str(stop.get("category") or "")
